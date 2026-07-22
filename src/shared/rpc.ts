@@ -1,39 +1,48 @@
 /**
- * The WebSocket RPC wire protocol between renderer and the local server.
+ * The renderer↔main RPC surface, carried over Electron IPC.
  * Two interaction shapes:
- *  - request/response  (dispatchCommand, getDiff, listModels)
- *  - subscription       (subscribeShell, subscribeThread) — server pushes a
- *    snapshot then a live stream of events, resumable via `afterSeq`.
+ *  - request/response  (dispatchCommand, getDiff, listModels, …) via `invoke`
+ *  - subscription       (subscribeShell, subscribeThread) — main pushes a
+ *    snapshot then a live stream of events on the `stream` channel.
  */
-import type { Command, CommandResult } from './commands'
+import type { Command } from './commands'
 import type { OrchestrationEvent } from './events'
-import type { ShellSnapshot, ThreadDetail, ModelOption } from './domain'
-import type { DiffScope, DiffResult, DiffSummary, DiffAction } from './diff'
+import type { ShellSnapshot, ThreadDetail } from './domain'
+import type { DiffAction, DiffScope } from './diff'
 
-// ---- client → server frames ----
-export type ClientFrame =
-  | { kind: 'request'; id: number; method: 'dispatchCommand'; params: Command }
-  | { kind: 'request'; id: number; method: 'getDiff'; params: { threadId: string; scope: DiffScope } }
-  | { kind: 'request'; id: number; method: 'getDiffSummary'; params: { threadId: string } }
-  | { kind: 'request'; id: number; method: 'fileAction'; params: { threadId: string; action: DiffAction; path: string } }
-  | { kind: 'request'; id: number; method: 'listModels'; params: Record<string, never> }
-  | { kind: 'subscribe'; id: number; method: 'subscribeShell'; params: Record<string, never> }
-  | { kind: 'subscribe'; id: number; method: 'subscribeThread'; params: { threadId: string; afterSeq?: number } }
-  | { kind: 'unsubscribe'; id: number }
+export const RpcChannels = {
+  request: 'rpc:request',
+  subscribe: 'rpc:subscribe',
+  unsubscribe: 'rpc:unsubscribe',
+  stream: 'rpc:stream'
+} as const
 
-// ---- server → client frames ----
-export type ServerFrame =
-  | { kind: 'response'; id: number; ok: true; data: ResponseData }
-  | { kind: 'response'; id: number; ok: false; error: string }
-  | { kind: 'stream'; id: number; message: StreamMessage }
+export type RpcRequest =
+  | { method: 'dispatchCommand'; params: Command }
+  | { method: 'getDiff'; params: { threadId: string; scope: DiffScope } }
+  | { method: 'getDiffSummary'; params: { threadId: string } }
+  | { method: 'fileAction'; params: { threadId: string; action: DiffAction; path: string } }
+  | { method: 'listModels'; params: Record<string, never> }
 
-export type ResponseData = CommandResult | DiffResult | DiffSummary | { ok: boolean; error?: string } | { models: ModelOption[] }
+export type RpcRequestMethod = RpcRequest['method']
+export type RpcSubscribeMethod = 'subscribeShell' | 'subscribeThread'
+
+/** one subscription registration, sent renderer → main */
+export interface SubscribeFrame {
+  id: number
+  method: RpcSubscribeMethod
+  params: { threadId?: string }
+}
 
 /** messages pushed on a subscription channel */
 export type StreamMessage =
-  | { type: 'shell-snapshot'; snapshot: ShellSnapshot; seq: number }
-  | { type: 'thread-snapshot'; detail: ThreadDetail; seq: number }
+  | { type: 'shell-snapshot'; snapshot: ShellSnapshot }
+  | { type: 'thread-snapshot'; detail: ThreadDetail }
   | { type: 'thread-not-found'; threadId: string }
   | { type: 'events'; events: OrchestrationEvent[] }
 
-export const DEFAULT_SERVER_HOST = '127.0.0.1'
+/** one pushed subscription message, sent main → renderer */
+export interface StreamFrame {
+  id: number
+  message: StreamMessage
+}

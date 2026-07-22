@@ -269,7 +269,7 @@ export function MessagesTimeline({ detail, onOpenDiff }: Props): JSX.Element {
     if (stick.current) bottomRef.current?.scrollIntoView({ block: 'end' })
   })
 
-  const working = detail.thread.status === 'running' || detail.thread.status === 'starting'
+  const working = detail.thread.status === 'running'
   const runningTurn = detail.turns.find((t) => t.state === 'running')
 
   if (groups.length === 0) {

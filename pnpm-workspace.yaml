@@ -1,6 +1,8 @@
 allowBuilds:
   electron: true
   esbuild: true
+minimumReleaseAgeExclude:
+  - electron@43.2.0
 onlyBuiltDependencies:
   - electron
   - esbuild

@@ -9,14 +9,13 @@ import { Sparkles } from 'lucide-react'
 export default function App(): JSX.Element {
   const init = useServer((s) => s.init)
   const ready = useServer((s) => s.ready)
-  const connected = useServer((s) => s.connected)
   const activeThreadId = useUi((s) => s.activeThreadId)
   const openTab = useUi((s) => s.openTab)
   const setActive = useUi((s) => s.setActive)
   const setCommandPaletteOpen = useUi((s) => s.setCommandPaletteOpen)
 
   useEffect(() => {
-    void init()
+    init()
   }, [init])
 
   // re-open the last active thread on launch — unless it no longer exists
@@ -44,7 +43,7 @@ export default function App(): JSX.Element {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
         <Sparkles size={22} className="text-primary" />
-        <span>{connected ? 'Loading…' : 'Starting local server…'}</span>
+        <span>Loading…</span>
       </div>
     )
   }
@@ -74,11 +73,6 @@ export default function App(): JSX.Element {
         )}
       </main>
       <CommandPalette />
-      {!connected && (
-        <div className="absolute bottom-3.5 left-1/2 z-60 -translate-x-1/2 rounded-full border border-input bg-popover px-3.5 py-1.5 text-xs text-muted-foreground">
-          Reconnecting to local server…
-        </div>
-      )}
     </div>
   )
 }

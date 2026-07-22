@@ -16,7 +16,7 @@ import { Kbd } from '@/components/ui/kbd'
 
 /** A thread is actively generating a response. The only status surfaced in the sidebar. */
 function isGenerating(t: ThreadSummary): boolean {
-  return t.status === 'running' || t.status === 'starting'
+  return t.status === 'running'
 }
 
 /** Inline rename field (window.prompt is not supported in Electron). */
@@ -46,7 +46,7 @@ function RenameInput({ initial, onCommit, onCancel }: { initial: string; onCommi
 }
 
 function ProjectRow({ project }: { project: Project }): JSX.Element {
-  const threads = useServer((s) => s.shell.threads.filter((t) => t.projectId === project.id && !t.archivedAt))
+  const threads = useServer((s) => s.shell.threads.filter((t) => t.projectId === project.id))
   const activeThreadId = useUi((s) => s.activeThreadId)
   const expandedMap = useUi((s) => s.expandedProjects)
   const toggleProject = useUi((s) => s.toggleProject)
@@ -102,14 +102,11 @@ function ProjectRow({ project }: { project: Project }): JSX.Element {
   const threadMenu = async (t: ThreadSummary): Promise<void> => {
     const picked = await window.native.showContextMenu([
       { id: 'rename', label: 'Rename thread' },
-      { id: 'archive', label: 'Archive' },
       { id: 'sep', type: 'separator' },
       { id: 'delete', label: 'Delete', danger: true }
     ])
     if (picked === 'rename') {
       setRenamingThreadId(t.id)
-    } else if (picked === 'archive') {
-      void dispatch({ type: 'thread.archive', threadId: t.id })
     } else if (picked === 'delete') {
       if (window.confirm('Delete this thread?')) void dispatch({ type: 'thread.delete', threadId: t.id })
     }

@@ -26,10 +26,10 @@ import type { WorkStatus, WorkItemType } from '@shared/domain'
 import type { WorkUpsert } from '@shared/events'
 import { codexModelSlug } from '../models'
 import { CodexAppServer } from './codexAppServer'
+import { createDeltaBatcher } from './deltaBatcher'
 import type { AgentHost, ProviderAdapter, ProviderKind, ProviderPermissionResult, RunTurnParams, TurnOutcome } from './types'
 import { firstLine, truncate } from './toolMeta'
 
-const DELTA_FLUSH_MS = 100
 const MAX_BODY = 12_000
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -141,23 +141,7 @@ export class CodexAppServerAdapter implements ProviderAdapter {
 
     return await new Promise<TurnOutcome>((resolveOuter) => {
       // ---- per-turn streaming state ----
-      let deltaBuf = ''
-      let deltaMsgId: string | null = null
-      let deltaTimer: NodeJS.Timeout | null = null
-      const flushDelta = (): void => {
-        if (deltaTimer) {
-          clearTimeout(deltaTimer)
-          deltaTimer = null
-        }
-        if (deltaMsgId && deltaBuf) this.host.onAssistantTextDelta(threadId, turnId, deltaMsgId, deltaBuf)
-        deltaBuf = ''
-      }
-      const queueDelta = (msgId: string, text: string): void => {
-        if (deltaMsgId && deltaMsgId !== msgId) flushDelta()
-        deltaMsgId = msgId
-        deltaBuf += text
-        deltaTimer ??= setTimeout(flushDelta, DELTA_FLUSH_MS)
-      }
+      const { queue: queueDelta, flush: flushDelta } = createDeltaBatcher(this.host, threadId, turnId)
 
       const ctx: TurnContext = {
         engineTurnId: turnId,
@@ -222,7 +206,6 @@ export class CodexAppServerAdapter implements ProviderAdapter {
 
     const server = new CodexAppServer({
       cwd,
-      onStderr: (line) => this.host.onStderr(threadId, line),
       onExit: () => this.sessions.delete(threadId)
     })
 

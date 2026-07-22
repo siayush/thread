@@ -66,8 +66,8 @@ export function applyEvent(db: Db, e: OrchestrationEvent): void {
       const t = e.payload
       db.run(
         `INSERT OR REPLACE INTO threads
-         (id,project_id,title,status,interaction_mode,runtime_mode,model,reasoning_effort,sdk_session_id,active_turn_id,last_error,has_pending_approval,created_at,updated_at,last_visited_at,latest_activity_at,archived_at,deleted)
-         VALUES (?,?,?,?,?,?,?,?,NULL,NULL,NULL,0,?,?,?,?,NULL,0)`,
+         (id,project_id,title,status,interaction_mode,runtime_mode,model,reasoning_effort,sdk_session_id,active_turn_id,last_error,has_pending_approval,created_at,updated_at,last_visited_at,latest_activity_at,deleted)
+         VALUES (?,?,?,?,?,?,?,?,NULL,NULL,NULL,0,?,?,?,?,0)`,
         [t.threadId, t.projectId, t.title, 'idle', t.interactionMode, t.runtimeMode, t.model, t.reasoningEffort ?? null, e.ts, e.ts, e.ts, e.ts]
       )
       break
@@ -103,9 +103,6 @@ export function applyEvent(db: Db, e: OrchestrationEvent): void {
     }
     case 'thread.visited':
       db.run('UPDATE threads SET last_visited_at=? WHERE id=?', [e.ts, e.payload.threadId])
-      break
-    case 'thread.archived':
-      db.run('UPDATE threads SET archived_at=?, updated_at=? WHERE id=?', [e.ts, e.ts, e.payload.threadId])
       break
     case 'thread.deleted':
       db.run('UPDATE threads SET deleted=1 WHERE id=?', [e.payload.threadId])
@@ -252,8 +249,7 @@ const toThread = (r: any): Thread => ({
   createdAt: r.created_at,
   updatedAt: r.updated_at,
   lastVisitedAt: r.last_visited_at,
-  latestActivityAt: r.latest_activity_at,
-  archivedAt: r.archived_at
+  latestActivityAt: r.latest_activity_at
 })
 
 const toMessage = (r: any): Message => ({
@@ -335,11 +331,9 @@ export function getShellSnapshot(db: Db): ShellSnapshot {
       status: t.status,
       interactionMode: t.interactionMode,
       hasPendingApproval: t.hasPendingApproval,
-      hasUnseenCompletion: t.status === 'completed' && t.latestActivityAt > (t.lastVisitedAt ?? 0),
       latestActivityAt: t.latestActivityAt,
       updatedAt: t.updatedAt,
-      lastVisitedAt: t.lastVisitedAt,
-      archivedAt: t.archivedAt
+      lastVisitedAt: t.lastVisitedAt
     }))
   return { projects, threads }
 }

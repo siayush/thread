@@ -1,19 +1,16 @@
 import { Db } from './db'
 import { Engine } from './engine'
-import { startWsServer, type RunningServer } from './wsServer'
+import { registerRpc } from './rpc'
 import { PROJECTION_VERSION, rebuildProjections } from './projections'
-import { DEFAULT_SERVER_HOST } from '@shared/rpc'
 
 export interface Server {
-  host: string
-  port: number
   engine: Engine
   dispose: () => void
 }
 
-/** Boots the whole local server stack: DB → projections → engine → WS RPC. */
-export async function startServer(dbPath: string): Promise<Server> {
-  const db = await Db.open(dbPath)
+/** Boots the whole local server stack: DB → projections → engine → IPC RPC. */
+export function startServer(dbPath: string): Server {
+  const db = Db.open(dbPath)
 
   // projector semantics changed since this DB was written → replay the log
   if (db.getMeta('projection_version') !== String(PROJECTION_VERSION)) {
@@ -24,13 +21,11 @@ export async function startServer(dbPath: string): Promise<Server> {
   const engine = new Engine(db)
   engine.recoverFromRestart()
 
-  const running: RunningServer = await startWsServer(engine, DEFAULT_SERVER_HOST)
+  const unregisterRpc = registerRpc(engine)
   return {
-    host: running.host,
-    port: running.port,
     engine,
     dispose: () => {
-      running.close()
+      unregisterRpc()
       db.close()
     }
   }

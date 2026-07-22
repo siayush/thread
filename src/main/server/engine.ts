@@ -8,8 +8,10 @@ import type { DiffAction, DiffResult, DiffScope, DiffSummary } from '@shared/dif
 import { Db } from './db'
 import { applyEvent, getShellSnapshot, getThreadDetail, getThreadProjectPath } from './projections'
 import { applyFileAction, isGitRepo, snapshotWorkingTree, turnDiff, turnDiffStat, workingDiff, workingSummary } from './git'
-import { ProviderRegistry } from './provider/registry'
-import type { AgentHost, ProviderPermissionResult, TurnOutcome } from './provider/types'
+import { providerForModel } from './models'
+import { ClaudeAdapter } from './provider/claudeAdapter'
+import { CodexAppServerAdapter } from './provider/codexAppServerAdapter'
+import type { AgentHost, ProviderAdapter, ProviderKind, ProviderPermissionResult, TurnOutcome } from './provider/types'
 
 type Send = (msg: StreamMessage) => void
 
@@ -37,7 +39,6 @@ const SHELL_RELEVANT = new Set([
   'thread.created',
   'thread.updated',
   'thread.visited',
-  'thread.archived',
   'thread.deleted',
   'thread.session',
   'turn.started',
@@ -53,7 +54,11 @@ const SHELL_BROADCAST_MS = 75
 export class Engine implements AgentHost {
   private subs = new Map<number, Subscription>()
   private subSeq = 0
-  private registry = new ProviderRegistry(this)
+  /** one handler per vendor; a thread's selected model routes to one of these */
+  private adapters: Record<ProviderKind, ProviderAdapter> = {
+    claude: new ClaudeAdapter(this),
+    codexAgent: new CodexAppServerAdapter(this)
+  }
   private pending = new Map<string, PendingApproval>()
   private sessionAllow = new Map<string, Set<string>>()
   /** AbortController per thread with a turn in flight — set synchronously at dispatch. */
@@ -77,7 +82,7 @@ export class Engine implements AgentHost {
     for (const m of this.db.all<{ id: string; thread_id: string; text: string | null }>('SELECT id, thread_id, text FROM messages WHERE streaming=1')) {
       events.push(this.ev('message.completed', m.thread_id, { messageId: m.id, threadId: m.thread_id, text: m.text ?? '' }))
     }
-    for (const t of this.db.all<{ id: string }>("SELECT id FROM threads WHERE status IN ('running','starting') AND deleted=0")) {
+    for (const t of this.db.all<{ id: string }>("SELECT id FROM threads WHERE status='running' AND deleted=0")) {
       events.push(this.ev('thread.session', t.id, { threadId: t.id, status: 'error', lastError: 'Interrupted by app restart' }))
     }
     if (events.length) this.append(events)
@@ -87,35 +92,17 @@ export class Engine implements AgentHost {
   subscribeShell(send: Send): () => void {
     const id = ++this.subSeq
     this.subs.set(id, { id, kind: 'shell', send })
-    send({ type: 'shell-snapshot', snapshot: getShellSnapshot(this.db), seq: this.maxSeq() })
+    send({ type: 'shell-snapshot', snapshot: getShellSnapshot(this.db) })
     return () => this.subs.delete(id)
   }
 
-  subscribeThread(threadId: string, afterSeq: number | undefined, send: Send): () => void {
+  subscribeThread(threadId: string, send: Send): () => void {
     const id = ++this.subSeq
     this.subs.set(id, { id, kind: 'thread', threadId, send })
-    if (afterSeq != null) {
-      const events = this.readEventsSince(threadId, afterSeq)
-      if (events.length) send({ type: 'events', events })
-    } else {
-      const detail = getThreadDetail(this.db, threadId)
-      if (detail) send({ type: 'thread-snapshot', detail, seq: this.maxSeq() })
-      else send({ type: 'thread-not-found', threadId })
-    }
+    const detail = getThreadDetail(this.db, threadId)
+    if (detail) send({ type: 'thread-snapshot', detail })
+    else send({ type: 'thread-not-found', threadId })
     return () => this.subs.delete(id)
-  }
-
-  private maxSeq(): number {
-    return this.db.get<{ m: number }>('SELECT COALESCE(MAX(seq),0) AS m FROM events')?.m ?? 0
-  }
-
-  private readEventsSince(streamId: string, afterSeq: number): OrchestrationEvent[] {
-    return this.db
-      .all<{ seq: number; id: string; ts: number; stream_id: string; type: string; payload: string }>(
-        'SELECT * FROM events WHERE stream_id=? AND seq>? ORDER BY seq',
-        [streamId, afterSeq]
-      )
-      .map((r) => ({ seq: r.seq, id: r.id, ts: r.ts, streamId: r.stream_id, type: r.type, payload: JSON.parse(r.payload) }) as OrchestrationEvent)
   }
 
   // ---------- event append / broadcast ----------
@@ -157,8 +144,7 @@ export class Engine implements AgentHost {
     this.shellTimer = setTimeout(() => {
       this.shellTimer = null
       const snapshot = getShellSnapshot(this.db)
-      const seq = this.maxSeq()
-      for (const sub of this.subs.values()) if (sub.kind === 'shell') sub.send({ type: 'shell-snapshot', snapshot, seq })
+      for (const sub of this.subs.values()) if (sub.kind === 'shell') sub.send({ type: 'shell-snapshot', snapshot })
     }, SHELL_BROADCAST_MS)
   }
 
@@ -221,9 +207,6 @@ export class Engine implements AgentHost {
       case 'thread.rename':
         this.append([this.ev('thread.updated', cmd.threadId, { threadId: cmd.threadId, title: cmd.title })])
         return { ok: true }
-      case 'thread.archive':
-        this.append([this.ev('thread.archived', cmd.threadId, { threadId: cmd.threadId })])
-        return { ok: true }
       case 'thread.delete':
         this.stopThreadWork(cmd.threadId)
         this.append([this.ev('thread.deleted', cmd.threadId, { threadId: cmd.threadId })])
@@ -256,7 +239,7 @@ export class Engine implements AgentHost {
   private stopThreadWork(threadId: string): void {
     this.activeTurns.get(threadId)?.abort()
     this.rejectPendingForThread(threadId)
-    for (const adapter of this.registry.all()) adapter.cancelTitle(threadId)
+    for (const adapter of Object.values(this.adapters)) adapter.cancelTitle(threadId)
     this.sessionAllow.delete(threadId)
   }
 
@@ -292,7 +275,7 @@ export class Engine implements AgentHost {
 
   /** Generate a conversation-derived title for a freshly-created thread. */
   private async autoTitle(threadId: string, cwd: string, message: string, model: string | null): Promise<void> {
-    const title = await this.registry.forModel(model).generateTitle(threadId, cwd, message)
+    const title = await this.adapters[providerForModel(model)].generateTitle(threadId, cwd, message)
     if (!title) return
     // don't clobber a title the user renamed while generation was in flight
     const current = this.db.get<{ title: string }>('SELECT title FROM threads WHERE id=?', [threadId])?.title
@@ -316,7 +299,7 @@ export class Engine implements AgentHost {
     try {
       before = await snapshotWorkingTree(p.cwd)
       this.db.run('INSERT OR REPLACE INTO turn_git (turn_id, thread_id, before_tree, after_tree) VALUES (?,?,?,NULL)', [p.turnId, p.threadId, before])
-      outcome = await this.registry.forModel(p.model).runTurn(p)
+      outcome = await this.adapters[providerForModel(p.model)].runTurn(p)
     } catch (err) {
       // an unexpected throw must never leave the thread stuck "running"
       outcome = p.abort.signal.aborted
@@ -392,10 +375,6 @@ export class Engine implements AgentHost {
 
   onPlan(threadId: string, turnId: string, text: string): void {
     this.append([this.ev('plan.proposed', threadId, { planId: randomUUID(), threadId, turnId, text })])
-  }
-
-  onStderr(_threadId: string, _data: string): void {
-    // available for debugging; intentionally quiet
   }
 
   requestPermission(args: {

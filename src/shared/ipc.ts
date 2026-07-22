@@ -1,19 +1,13 @@
 /**
  * Electron native IPC — the small surface that must go through the main
- * process (dialogs, theme, shell, and the local server's connection info).
- * Everything else (data, agent, diffs) flows over the WS RPC.
+ * process (dialogs, theme, shell). App data/agent/diff traffic uses the
+ * RPC channels in `rpc.ts`.
  */
 export const IpcChannels = {
-  getServerInfo: 'native:get-server-info',
   pickFolder: 'native:pick-folder',
   openExternal: 'native:open-external',
   showContextMenu: 'native:context-menu'
 } as const
-
-export interface ServerInfo {
-  host: string
-  port: number
-}
 
 export interface ContextMenuItem {
   id: string

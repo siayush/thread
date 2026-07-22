@@ -4,7 +4,6 @@ import { rm } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import parseDiff from 'parse-diff'
 import type { DiffAction, DiffFile, DiffResult, DiffScope, DiffSummary } from '@shared/diff'
 
 const execFileP = promisify(execFile)
@@ -100,33 +99,68 @@ export async function turnDiffStat(cwd: string, beforeTree: string, afterTree: s
   return statBetween(cwd, beforeTree, afterTree)
 }
 
-function classify(f: parseDiff.File): DiffFile['status'] {
-  if (f.new) return 'added'
-  if (f.deleted) return 'deleted'
-  if (f.from && f.to && f.from !== f.to) return 'renamed'
-  return 'modified'
+/** Split a full `git diff` into per-file raw patch sections. */
+function splitPatches(raw: string): string[] {
+  return raw.split(/(?=^diff --git )/m).filter((p) => p.startsWith('diff --git'))
 }
 
-/** Split a full `git diff` into per-file raw patch sections (aligned with parse-diff order). */
-function splitPatches(raw: string): string[] {
-  const parts = raw.split(/(?=^diff --git )/m).filter((p) => p.startsWith('diff --git'))
-  return parts
+/** Strip git's `a/`/`b/` prefix (and optional quoting) from a `---`/`+++` path; null for /dev/null. */
+function headerPath(raw: string): string | null {
+  let p = raw.trim()
+  if (p.startsWith('"') && p.endsWith('"')) p = p.slice(1, -1)
+  if (p === '/dev/null') return null
+  return p.replace(/^[ab]\//, '')
+}
+
+/**
+ * Parse one per-file patch by reading its header lines and counting hunk
+ * lines — the same facts `--numstat`/`--name-status` report, already in hand.
+ */
+function parsePatch(patch: string, staged: boolean): DiffFile {
+  let from: string | null = null
+  let to: string | null = null
+  let status: DiffFile['status'] = 'modified'
+  let binary = false
+  let additions = 0
+  let deletions = 0
+  let inHunks = false
+  for (const line of patch.split('\n')) {
+    if (inHunks) {
+      if (line.startsWith('+')) additions++
+      else if (line.startsWith('-')) deletions++
+      continue
+    }
+    if (line.startsWith('@@')) inHunks = true
+    else if (line.startsWith('new file mode')) status = 'added'
+    else if (line.startsWith('deleted file mode')) status = 'deleted'
+    else if (line.startsWith('rename from ')) {
+      status = 'renamed'
+      from = line.slice('rename from '.length)
+    } else if (line.startsWith('rename to ')) to = line.slice('rename to '.length)
+    else if (line.startsWith('--- ')) from ??= headerPath(line.slice(4))
+    else if (line.startsWith('+++ ')) to ??= headerPath(line.slice(4))
+    else if (line.startsWith('Binary files ') || line === 'GIT binary patch') binary = true
+  }
+  // binary / mode-only patches carry no ---/+++ lines — fall back to the diff header
+  if (!from && !to) {
+    const m = patch.match(/^diff --git a\/(.*) b\/(.*)$/m)
+    if (m) to = m[2]
+  }
+  return {
+    path: to ?? from ?? 'unknown',
+    oldPath: status === 'renamed' ? from : null,
+    status,
+    additions,
+    deletions,
+    patch,
+    binary,
+    staged
+  }
 }
 
 /** Parse one raw `git diff` into DiffFile[], tagging each with the given staged flag. */
 function filesFromDiff(rawDiff: string, staged: boolean): DiffFile[] {
-  const parsed = parseDiff(rawDiff)
-  const patches = splitPatches(rawDiff)
-  return parsed.map((f, i) => ({
-    path: (f.to && f.to !== '/dev/null' ? f.to : f.from) ?? 'unknown',
-    oldPath: f.from && f.from !== f.to ? f.from : null,
-    status: classify(f),
-    additions: f.additions ?? 0,
-    deletions: f.deletions ?? 0,
-    patch: patches[i] ?? '',
-    binary: /Binary files /.test(patches[i] ?? ''),
-    staged
-  }))
+  return splitPatches(rawDiff).map((p) => parsePatch(p, staged))
 }
 
 function buildResult(scope: DiffScope, files: DiffFile[]): DiffResult {
@@ -144,13 +178,20 @@ function splitLines(out: string | null): string[] {
   return (out ?? '').split('\n').map((l) => l.trim()).filter(Boolean)
 }
 
+/** `git diff --no-index` exits 1 when there IS a diff — recover the patch from the "error". */
+async function noIndexDiff(cwd: string, path: string): Promise<string | null> {
+  try {
+    return await git(cwd, ['diff', '--no-color', '--no-index', '--', '/dev/null', path])
+  } catch (err) {
+    const out = (err as { stdout?: unknown })?.stdout
+    return typeof out === 'string' && out ? out : null
+  }
+}
+
 /** Raw unified diff for every untracked file, concatenated (each rendered as a new-file add). */
 async function untrackedDiff(cwd: string): Promise<string> {
   const paths = splitLines(await tryGit(cwd, ['ls-files', '--others', '--exclude-standard']))
-  const patches = await Promise.all(
-    // --no-index exits non-zero when there IS a diff, so tryGit swallows the "error"
-    paths.map((p) => tryGit(cwd, ['diff', '--no-color', '--no-index', '--', '/dev/null', p]))
-  )
+  const patches = await Promise.all(paths.map((p) => noIndexDiff(cwd, p)))
   return patches.filter(Boolean).join('\n')
 }
 

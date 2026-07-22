@@ -65,7 +65,7 @@ export function CommandPalette(): JSX.Element {
         }
       })
     }
-    for (const t of threads.filter((x) => !x.archivedAt)) {
+    for (const t of threads) {
       const project = projects.find((p) => p.id === t.projectId)
       list.push({ id: `thread-${t.id}`, label: t.title, hint: project?.name, icon: MessageCircle, run: () => visit(t.id) })
     }

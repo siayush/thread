@@ -94,7 +94,7 @@ export function Composer({ thread }: { thread: Thread }): JSX.Element {
   const [sendError, setSendError] = useState<string | null>(null)
 
   const text = drafts[thread.id] ?? ''
-  const running = thread.status === 'running' || thread.status === 'starting'
+  const running = thread.status === 'running'
   const pending = detail?.pendingApprovals ?? []
 
   const currentModel = models.find((m) => (thread.model ? m.value === thread.model : m.value === 'default'))

@@ -33,7 +33,6 @@ export type OrchestrationEvent =
   | (Base & { type: 'thread.created'; payload: { threadId: string; projectId: string; title: string; interactionMode: InteractionMode; runtimeMode: RuntimeMode; model: string | null; reasoningEffort: string | null } })
   | (Base & { type: 'thread.updated'; payload: { threadId: string; title?: string; interactionMode?: InteractionMode; runtimeMode?: RuntimeMode; model?: string | null; reasoningEffort?: string | null } })
   | (Base & { type: 'thread.visited'; payload: { threadId: string } })
-  | (Base & { type: 'thread.archived'; payload: { threadId: string } })
   | (Base & { type: 'thread.deleted'; payload: { threadId: string } })
   | (Base & { type: 'thread.session'; payload: { threadId: string; status?: SessionStatus; sdkSessionId?: string | null; lastError?: string | null } })
   | (Base & { type: 'turn.started'; payload: { threadId: string; turnId: string } })

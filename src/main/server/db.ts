@@ -1,59 +1,47 @@
-import { createRequire } from 'node:module'
-import { dirname, join } from 'node:path'
-import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs'
-import initSqlJs, { type Database, type SqlJsStatic } from 'sql.js'
-
-const require = createRequire(import.meta.url)
+import { dirname } from 'node:path'
+import { existsSync, mkdirSync, renameSync } from 'node:fs'
+import { DatabaseSync, type SQLInputValue } from 'node:sqlite'
 
 /**
- * A thin synchronous SQLite wrapper over sql.js (WASM — no native build).
- * The whole DB is held in memory and flushed to a single file, debounced,
- * after each write. This is the "local JSON file"-equivalent, but real SQL.
+ * A thin synchronous SQLite wrapper over the Node built-in `node:sqlite`.
+ * Real on-disk SQLite — every statement/transaction is durable as written.
  */
 export class Db {
-  private db: Database
-  private saveTimer: NodeJS.Timeout | null = null
-  private dirty = false
+  private constructor(private readonly db: DatabaseSync) {}
 
-  private constructor(
-    db: Database,
-    private readonly filePath: string
-  ) {
-    this.db = db
-  }
-
-  static async open(filePath: string): Promise<Db> {
-    const wasmDir = dirname(require.resolve('sql.js'))
-    const SQL: SqlJsStatic = await initSqlJs({
-      locateFile: (file: string) => join(wasmDir, file)
-    })
+  static open(filePath: string): Db {
     mkdirSync(dirname(filePath), { recursive: true })
-    const db = Db.load(SQL, filePath)
-    const instance = new Db(db, filePath)
+    const instance = new Db(Db.load(filePath))
     instance.migrate()
     return instance
   }
 
-  /** Load the DB file; if it's unreadable/corrupt, set it aside and start fresh. */
-  private static load(SQL: SqlJsStatic, filePath: string): Database {
-    if (!existsSync(filePath)) return new SQL.Database()
+  /** Open the DB file; if it's unreadable/corrupt, set it aside and start fresh. */
+  private static load(filePath: string): DatabaseSync {
+    if (!existsSync(filePath)) return new DatabaseSync(filePath)
+    let db: DatabaseSync | null = null
     try {
-      const db = new SQL.Database(readFileSync(filePath))
-      // cheap integrity probe — throws if the file is truncated/corrupt
-      db.exec('SELECT 1')
+      db = new DatabaseSync(filePath)
+      // cheap integrity probe — throws if the file isn't a usable database
+      db.exec('PRAGMA quick_check')
       return db
     } catch {
+      try {
+        db?.close()
+      } catch {
+        /* ignore */
+      }
       try {
         renameSync(filePath, `${filePath}.corrupt-${Date.now()}`)
       } catch {
         /* ignore */
       }
-      return new SQL.Database()
+      return new DatabaseSync(filePath)
     }
   }
 
   private migrate(): void {
-    this.db.run(`
+    this.db.exec(`
       CREATE TABLE IF NOT EXISTS meta (
         key TEXT PRIMARY KEY, value TEXT
       );
@@ -76,7 +64,7 @@ export class Db {
         interaction_mode TEXT, runtime_mode TEXT, model TEXT, reasoning_effort TEXT, sdk_session_id TEXT,
         active_turn_id TEXT, last_error TEXT, has_pending_approval INTEGER DEFAULT 0,
         created_at INTEGER, updated_at INTEGER, last_visited_at INTEGER,
-        latest_activity_at INTEGER, archived_at INTEGER, deleted INTEGER DEFAULT 0
+        latest_activity_at INTEGER, deleted INTEGER DEFAULT 0
       );
       CREATE TABLE IF NOT EXISTS messages (
         id TEXT PRIMARY KEY, thread_id TEXT, turn_id TEXT, role TEXT, text TEXT,
@@ -111,34 +99,32 @@ export class Db {
       );
     `)
     try {
-      this.db.run('CREATE UNIQUE INDEX IF NOT EXISTS idx_events_id ON events (id);')
+      this.db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_events_id ON events (id);')
     } catch {
       /* a pre-existing DB with duplicate event ids keeps working without the index */
     }
     // additive column migrations (CREATE TABLE IF NOT EXISTS won't alter an existing table)
     try {
-      this.db.run('ALTER TABLE threads ADD COLUMN reasoning_effort TEXT;')
+      this.db.exec('ALTER TABLE threads ADD COLUMN reasoning_effort TEXT;')
     } catch {
       /* column already exists */
     }
   }
 
   run(sql: string, params: unknown[] = []): void {
-    this.db.run(sql, params as never)
-    this.markDirty()
+    this.db.prepare(sql).run(...(params as SQLInputValue[]))
   }
 
   /** Run `fn` inside a transaction; rolls back and rethrows on failure. */
   transaction<T>(fn: () => T): T {
-    this.db.run('BEGIN')
+    this.db.exec('BEGIN')
     try {
       const result = fn()
-      this.db.run('COMMIT')
-      this.markDirty()
+      this.db.exec('COMMIT')
       return result
     } catch (err) {
       try {
-        this.db.run('ROLLBACK')
+        this.db.exec('ROLLBACK')
       } catch {
         /* ignore */
       }
@@ -148,12 +134,7 @@ export class Db {
 
   /** Read rows as objects. */
   all<T = Record<string, unknown>>(sql: string, params: unknown[] = []): T[] {
-    const stmt = this.db.prepare(sql)
-    stmt.bind(params as never)
-    const rows: T[] = []
-    while (stmt.step()) rows.push(stmt.getAsObject() as T)
-    stmt.free()
-    return rows
+    return this.db.prepare(sql).all(...(params as SQLInputValue[])) as T[]
   }
 
   get<T = Record<string, unknown>>(sql: string, params: unknown[] = []): T | undefined {
@@ -170,40 +151,13 @@ export class Db {
 
   /** Insert an event and return its auto-assigned seq. */
   insertEvent(id: string, ts: number, streamId: string, type: string, payloadJson: string): number {
-    this.db.run('INSERT INTO events (id, ts, stream_id, type, payload) VALUES (?,?,?,?,?)', [
-      id,
-      ts,
-      streamId,
-      type,
-      payloadJson
-    ] as never)
-    const row = this.get<{ seq: number }>('SELECT last_insert_rowid() AS seq')
-    this.markDirty()
-    return row?.seq ?? 0
-  }
-
-  private markDirty(): void {
-    this.dirty = true
-    if (this.saveTimer) return
-    this.saveTimer = setTimeout(() => this.flush(), 250)
-  }
-
-  flush(): void {
-    if (this.saveTimer) {
-      clearTimeout(this.saveTimer)
-      this.saveTimer = null
-    }
-    if (!this.dirty) return
-    const bytes = this.db.export()
-    // temp file + rename so a crash mid-write can't corrupt the DB
-    const tmpPath = `${this.filePath}.tmp`
-    writeFileSync(tmpPath, Buffer.from(bytes))
-    renameSync(tmpPath, this.filePath)
-    this.dirty = false
+    const { lastInsertRowid } = this.db
+      .prepare('INSERT INTO events (id, ts, stream_id, type, payload) VALUES (?,?,?,?,?)')
+      .run(id, ts, streamId, type, payloadJson)
+    return Number(lastInsertRowid)
   }
 
   close(): void {
-    this.flush()
     this.db.close()
   }
 }

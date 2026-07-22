@@ -27,7 +27,6 @@ export interface CodexAppServerOptions {
   readonly binaryPath?: string
   readonly cwd: string
   readonly env?: NodeJS.ProcessEnv
-  readonly onStderr?: (line: string) => void
   readonly onExit?: (code: number | null) => void
 }
 
@@ -38,7 +37,6 @@ export class CodexAppServer {
   private notificationHandlers = new Map<string, NotificationHandler>()
   private requestHandlers = new Map<string, ServerRequestHandler>()
   private stdoutBuf = ''
-  private stderrBuf = ''
   private closed = false
 
   constructor(opts: CodexAppServerOptions) {
@@ -49,13 +47,8 @@ export class CodexAppServer {
     })
     this.child.stdout.setEncoding('utf8')
     this.child.stdout.on('data', (chunk: string) => this.onStdout(chunk))
-    this.child.stderr.setEncoding('utf8')
-    this.child.stderr.on('data', (chunk: string) => {
-      this.stderrBuf += chunk
-      const lines = this.stderrBuf.split('\n')
-      this.stderrBuf = lines.pop() ?? ''
-      for (const line of lines) if (line.trim()) opts.onStderr?.(line)
-    })
+    // drain stderr so a chatty codex can't block on a full pipe buffer
+    this.child.stderr.resume()
     this.child.on('error', (err) => this.failAll(err))
     this.child.on('exit', (code) => {
       this.closed = true

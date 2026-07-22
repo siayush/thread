@@ -11,7 +11,6 @@ export type Command =
   | { type: 'project.open'; projectId: string }
   | { type: 'thread.create'; projectId: string; title?: string }
   | { type: 'thread.rename'; threadId: string; title: string }
-  | { type: 'thread.archive'; threadId: string }
   | { type: 'thread.delete'; threadId: string }
   | { type: 'thread.visit'; threadId: string }
   | {

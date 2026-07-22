@@ -4,7 +4,7 @@
  * Project → Thread → (Messages / Turns / WorkItems / Checkpoints / Plans) model.
  */
 
-export type SessionStatus = 'idle' | 'starting' | 'running' | 'completed' | 'error'
+export type SessionStatus = 'idle' | 'running' | 'completed' | 'error'
 
 /** Build = normal agent, Plan = read-only planning mode. */
 export type InteractionMode = 'build' | 'plan'
@@ -46,7 +46,6 @@ export interface Thread {
   updatedAt: number
   lastVisitedAt: number
   latestActivityAt: number
-  archivedAt: number | null
 }
 
 export type MessageRole = 'user' | 'assistant' | 'system' | 'reasoning'
@@ -146,11 +145,9 @@ export interface ThreadSummary {
   status: SessionStatus
   interactionMode: InteractionMode
   hasPendingApproval: boolean
-  hasUnseenCompletion: boolean
   latestActivityAt: number
   updatedAt: number
   lastVisitedAt: number
-  archivedAt: number | null
 }
 
 export interface ShellSnapshot {
@@ -176,10 +173,9 @@ export type ApprovalDecision =
 /**
  * Which vendor handler backs a turn.
  *  - `claude`     = Anthropic (bundled Claude Code CLI)
- *  - `codex`      = OpenAI via the OpenAI API in-process (needs a key)
  *  - `codexAgent` = OpenAI via the `codex` CLI app-server (auth = `codex login`)
  */
-export type ProviderKind = 'claude' | 'codex' | 'codexAgent'
+export type ProviderKind = 'claude' | 'codexAgent'
 
 /** available models surfaced in the composer picker */
 export interface ModelOption {

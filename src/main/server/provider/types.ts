@@ -9,16 +9,15 @@
  *
  * @module provider/types
  */
-import type { ApprovalKind, WorkItemType } from '@shared/domain'
+import type { ApprovalKind } from '@shared/domain'
 import type { WorkUpsert } from '@shared/events'
 
 /**
  * Which vendor handler backs a turn.
  *  - `claude`     = Anthropic, via the bundled Claude Code CLI
- *  - `codex`      = OpenAI, via the OpenAI API in-process (needs a key)
  *  - `codexAgent` = OpenAI, via the `codex` CLI app-server (auth = `codex login`)
  */
-export type ProviderKind = 'claude' | 'codex' | 'codexAgent'
+export type ProviderKind = 'claude' | 'codexAgent'
 
 /**
  * Result of an approval prompt. Structurally a subset of the Claude SDK's
@@ -49,7 +48,6 @@ export interface AgentHost {
     input: Record<string, unknown>
     requestId: string
   }): Promise<ProviderPermissionResult>
-  onStderr(threadId: string, data: string): void
 }
 
 export interface RunTurnParams {
@@ -88,10 +86,3 @@ export interface ProviderAdapter {
   cancelTitle(threadId: string): void
 }
 
-/** Metadata used to describe/route a handler. */
-export interface ProviderMeta {
-  readonly kind: ProviderKind
-  readonly displayName: string
-}
-
-export type { WorkItemType }

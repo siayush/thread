@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, shell, Menu, type MenuItemConstructorOptions } from 'electron'
-import { IpcChannels, type ContextMenuItem, type ServerInfo } from '@shared/ipc'
+import { IpcChannels, type ContextMenuItem } from '@shared/ipc'
 import { startServer, type Server } from './server'
 import appIcon from '../../resources/icon.png?asset'
 
@@ -40,11 +40,6 @@ function createWindow(): void {
 }
 
 function registerIpc(): void {
-  ipcMain.handle(IpcChannels.getServerInfo, (): ServerInfo => {
-    if (!server) throw new Error('Server not started')
-    return { host: server.host, port: server.port }
-  })
-
   ipcMain.handle(IpcChannels.pickFolder, async (): Promise<string | null> => {
     if (!mainWindow) return null
     const res = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory', 'createDirectory'] })
@@ -74,8 +69,8 @@ function registerIpc(): void {
   })
 }
 
-app.whenReady().then(async () => {
-  server = await startServer(join(app.getPath('userData'), 'thread.sqlite'))
+app.whenReady().then(() => {
+  server = startServer(join(app.getPath('userData'), 'thread.sqlite'))
   registerIpc()
   createWindow()
 

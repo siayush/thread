@@ -21,20 +21,18 @@ interface Vendor {
 
 const VENDORS: Vendor[] = [
   { id: 'anthropic', name: 'Anthropic', iconSvg: anthropicIcon, colorCls: 'text-foreground', providers: ['claude'] },
-  { id: 'openai', name: 'OpenAI', iconSvg: openaiIcon, colorCls: 'text-foreground', providers: ['codexAgent', 'codex'] }
+  { id: 'openai', name: 'OpenAI', iconSvg: openaiIcon, colorCls: 'text-foreground', providers: ['codexAgent'] }
 ]
 
 const VENDOR_OF: Record<ProviderKind, Vendor> = {
   claude: VENDORS[0],
-  codexAgent: VENDORS[1],
-  codex: VENDORS[1]
+  codexAgent: VENDORS[1]
 }
 
 /** product name shown under the model ("Claude", "Codex") */
 const PRODUCT_LABEL: Record<ProviderKind, string> = {
   claude: 'Claude',
-  codexAgent: 'Codex',
-  codex: 'Codex API'
+  codexAgent: 'Codex'
 }
 
 /**

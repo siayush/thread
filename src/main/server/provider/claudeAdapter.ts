@@ -3,9 +3,9 @@ import type { Options, PermissionResult, Query, SDKMessage } from '@anthropic-ai
 import type { WorkStatus } from '@shared/domain'
 import type { WorkUpsert } from '@shared/events'
 import type { AgentHost, ProviderAdapter, ProviderKind, RunTurnParams, TurnOutcome } from './types'
+import { createDeltaBatcher } from './deltaBatcher'
 import { approvalKind, bodyForInput, sanitizeTitle, stringifyToolResult, TITLE_PROMPT, toolMeta, truncate } from './toolMeta'
 
-const DELTA_FLUSH_MS = 100
 const TITLE_TIMEOUT_MS = 30_000
 
 /** Backoff before each retry of a transient turn failure (ms). Length ⇒ retry count. */
@@ -164,24 +164,11 @@ export class ClaudeAdapter implements ProviderAdapter {
     let costUsd: number | null = null
     let outcome: TurnOutcome = { state: 'completed', costUsd: null, assistantMessageId: null }
 
-    // one persisted message.delta per ~100ms instead of one per token
-    let deltaBuf = ''
-    let deltaMsgId: string | null = null
-    let deltaTimer: NodeJS.Timeout | null = null
-    const flushDelta = (): void => {
-      if (deltaTimer) {
-        clearTimeout(deltaTimer)
-        deltaTimer = null
-      }
-      if (deltaMsgId && deltaBuf) this.host.onAssistantTextDelta(threadId, turnId, deltaMsgId, deltaBuf)
-      deltaBuf = ''
-    }
+    const batcher = createDeltaBatcher(this.host, threadId, turnId)
+    const flushDelta = batcher.flush
     const queueDelta = (messageId: string, text: string): void => {
       producedOutput = true
-      if (deltaMsgId && deltaMsgId !== messageId) flushDelta()
-      deltaMsgId = messageId
-      deltaBuf += text
-      deltaTimer ??= setTimeout(flushDelta, DELTA_FLUSH_MS)
+      batcher.queue(messageId, text)
     }
 
     const emitWork = (id: string, upsert: Omit<WorkUpsert, 'workId' | 'threadId' | 'turnId'>): void => {
@@ -213,7 +200,6 @@ export class ClaudeAdapter implements ProviderAdapter {
       allowDangerouslySkipPermissions: permissionMode === 'bypassPermissions',
       settingSources: ['project', 'local'],
       systemPrompt: { type: 'preset', preset: 'claude_code' },
-      stderr: (d) => this.host.onStderr(threadId, d),
       ...(model ? { model } : {}),
       ...(reasoningEffort && EFFORT_THINKING_TOKENS[reasoningEffort] ? { maxThinkingTokens: EFFORT_THINKING_TOKENS[reasoningEffort] } : {}),
       ...(resumeSessionId ? { resume: resumeSessionId } : {}),

@@ -5,12 +5,10 @@ import type { ModelOption, ProviderKind } from '@shared/domain'
  * provider* (driver-per-instance idea, folded into the picker): a
  * value's `provider` field routes the turn to the matching handler.
  *
- * Three handlers are offered:
+ * Two handlers are offered:
  *  - Claude   — `opus`/`sonnet`/`haiku` aliases (`default` → null CLI default).
- *  - Codex API — OpenAI API in-process (needs a key); values are OpenAI slugs.
  *  - Codex CLI — the `codex` app-server (auth via `codex login`, no key needed).
- *    Values are prefixed `codexcli:` so they stay distinct from the API entries;
- *    `slug` is the real model id passed to `codex`.
+ *    Values are prefixed `codexcli:`; `slug` is the real model id passed to `codex`.
  */
 /*
  * Naming conventions: Claude models use the full versioned
@@ -18,8 +16,8 @@ import type { ModelOption, ProviderKind } from '@shared/domain'
  * OpenAI models use the slug formatted as "GPT-…" with dash segments
  * capitalized ("GPT-5-Codex").
  */
-/** Effort levels for the in-process OpenAI path; codex app-server models
- *  advertise their own live set (see mergeCodexAgentModels). */
+/** Static fallback effort levels; codex app-server models advertise their own
+ *  live set (see mergeCodexAgentModels). */
 const LMH = ['low', 'medium', 'high']
 
 /**
@@ -42,10 +40,7 @@ export const MODELS: ModelOption[] = [
   { value: 'claude-sonnet-4-6', label: 'Sonnet 4.6', description: 'Previous Sonnet generation', provider: 'claude', reasoningEfforts: CLAUDE_MAX, defaultReasoningEffort: 'high' },
   { value: 'claude-haiku-4-5', label: 'Haiku 4.5', description: 'Fastest — quick edits and simple tasks', provider: 'claude', reasoningEfforts: [] },
   { value: 'codexcli:gpt-5-codex', label: 'GPT-5-Codex', description: 'codex app-server; auth via `codex login` (no API key)', provider: 'codexAgent', slug: 'gpt-5-codex', reasoningEfforts: LMH },
-  { value: 'codexcli:gpt-5', label: 'GPT-5', description: 'codex app-server; auth via `codex login` (no API key)', provider: 'codexAgent', slug: 'gpt-5', reasoningEfforts: LMH },
-  { value: 'gpt-5-codex', label: 'GPT-5-Codex', description: 'OpenAI coding agent (in-process, requires OPENAI_API_KEY)', provider: 'codex', reasoningEfforts: LMH },
-  { value: 'gpt-5', label: 'GPT-5', description: 'OpenAI general model (in-process, requires OPENAI_API_KEY)', provider: 'codex', reasoningEfforts: LMH },
-  { value: 'gpt-5-mini', label: 'GPT-5-Mini', description: 'Faster, cheaper OpenAI model (in-process)', provider: 'codex', reasoningEfforts: LMH }
+  { value: 'codexcli:gpt-5', label: 'GPT-5', description: 'codex app-server; auth via `codex login` (no API key)', provider: 'codexAgent', slug: 'gpt-5', reasoningEfforts: LMH }
 ]
 
 const MODEL_BY_VALUE = new Map<string, ModelOption>(MODELS.map((m) => [m.value, m]))

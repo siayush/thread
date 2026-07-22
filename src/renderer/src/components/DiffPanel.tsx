@@ -113,12 +113,23 @@ function DiffMessage({ children }: { children: ReactNode }): JSX.Element {
   return <div className="p-5 text-center text-[12.5px] text-muted-foreground">{children}</div>
 }
 
+/** FNV-1a content hash — the worker pool caches rendered diffs by this key,
+ *  so it must change whenever the patch text does (length alone collides). */
+function fnv1a(s: string): string {
+  let h = 0x811c9dc5
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i)
+    h = Math.imul(h, 0x01000193)
+  }
+  return (h >>> 0).toString(36)
+}
+
 function PierreDiff({ patch, view }: { patch: string; view: 'inline' | 'split' }): JSX.Element {
   const items = useMemo<CodeViewDiffItem[]>(() => {
     if (!patch.trim()) return []
     let parsed: ReturnType<typeof parsePatchFiles>
     try {
-      parsed = parsePatchFiles(patch, `thread:${patch.length}`)
+      parsed = parsePatchFiles(patch, `thread:${fnv1a(patch)}`)
     } catch {
       return []
     }
