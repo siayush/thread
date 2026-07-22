@@ -21,7 +21,7 @@ export type RpcRequest =
   | { method: 'dispatchCommand'; params: Command }
   | { method: 'getDiff'; params: { threadId: string; scope: DiffScope } }
   | { method: 'getDiffSummary'; params: { threadId: string } }
-  | { method: 'fileAction'; params: { threadId: string; action: DiffAction; path: string } }
+  | { method: 'fileAction'; params: { threadId: string; action: DiffAction; paths: string[] } }
   | { method: 'listModels'; params: Record<string, never> }
 
 export type RpcRequestMethod = RpcRequest['method']

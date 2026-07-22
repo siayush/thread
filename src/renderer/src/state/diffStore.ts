@@ -15,6 +15,9 @@ interface DiffDataState {
   load: (threadId: string, scope: DiffScope) => Promise<void>
   /** re-fetch the last-loaded thread+scope (after a stage/unstage/discard) */
   reload: () => void
+  /** synchronously retarget the store: clears a stale result the moment the
+   *  thread/scope changes, so a debounced load doesn't flash the old diff */
+  setTarget: (threadId: string, scope: DiffScope) => void
 }
 
 export const useDiffData = create<DiffDataState>((set, get) => ({
@@ -45,6 +48,11 @@ export const useDiffData = create<DiffDataState>((set, get) => ({
     if (!threadId) return
     const scope: DiffScope = key.endsWith('|working') ? { kind: 'working' } : { kind: 'turn', turnId: key.split('|turn:')[1] }
     void get().load(threadId, scope)
+  },
+
+  setTarget: (threadId, scope) => {
+    const key = `${threadId}|${scopeKey(scope)}`
+    set((s) => (s.key === key ? { threadId, key } : { threadId, key, loading: true, result: null }))
   }
 }))
 

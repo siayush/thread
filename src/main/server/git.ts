@@ -249,21 +249,25 @@ export async function workingSummary(cwd: string): Promise<DiffSummary> {
   return { isGitRepo: true, files, additions, deletions }
 }
 
-/** Stage / unstage / discard a single working-tree path. `discard` is destructive. */
-export async function applyFileAction(cwd: string, action: DiffAction, path: string): Promise<{ ok: boolean; error?: string }> {
+/** Stage / unstage / discard working-tree paths in a single git invocation
+ *  (one call per action even for "all files", so nothing races on the index lock).
+ *  `discard` is destructive. */
+export async function applyFileAction(cwd: string, action: DiffAction, paths: string[]): Promise<{ ok: boolean; error?: string }> {
   if (!isGitRepo(cwd)) return { ok: false, error: 'Not a git repository' }
+  if (paths.length === 0) return { ok: true }
   try {
     if (action === 'stage') {
-      await git(cwd, ['add', '--', path])
+      await git(cwd, ['add', '--', ...paths])
     } else if (action === 'unstage') {
       // `restore --staged` needs a HEAD; fall back to `rm --cached` for a first-commit repo
-      const restored = await tryGit(cwd, ['restore', '--staged', '--', path])
-      if (restored == null) await git(cwd, ['rm', '--cached', '--', path])
+      const restored = await tryGit(cwd, ['restore', '--staged', '--', ...paths])
+      if (restored == null) await git(cwd, ['rm', '--cached', '-r', '--', ...paths])
     } else {
-      // discard: revert tracked paths, delete untracked ones
-      const untracked = splitLines(await tryGit(cwd, ['ls-files', '--others', '--exclude-standard', '--', path]))
-      if (untracked.includes(path)) await rm(join(cwd, path), { force: true })
-      else await git(cwd, ['restore', '--staged', '--worktree', '--', path])
+      // discard: delete untracked paths, revert tracked ones
+      const untracked = new Set(splitLines(await tryGit(cwd, ['ls-files', '--others', '--exclude-standard', '--', ...paths])))
+      const tracked = paths.filter((p) => !untracked.has(p))
+      await Promise.all([...untracked].map((p) => rm(join(cwd, p), { force: true })))
+      if (tracked.length > 0) await git(cwd, ['restore', '--staged', '--worktree', '--', ...tracked])
     }
     return { ok: true }
   } catch (err) {

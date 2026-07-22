@@ -18,7 +18,7 @@ interface ServerState {
   dispatch: (cmd: Command) => Promise<CommandResult>
   getDiff: (threadId: string, scope: DiffScope) => Promise<DiffResult>
   getDiffSummary: (threadId: string) => Promise<DiffSummary>
-  fileAction: (threadId: string, action: DiffAction, path: string) => Promise<{ ok: boolean; error?: string }>
+  fileAction: (threadId: string, action: DiffAction, paths: string[]) => Promise<{ ok: boolean; error?: string }>
 }
 
 const emptyShell: ShellSnapshot = { projects: [], threads: [] }
@@ -83,5 +83,5 @@ export const useServer = create<ServerState>((set, get) => ({
   },
   getDiff: (threadId, scope) => rpc.request<DiffResult>('getDiff', { threadId, scope }),
   getDiffSummary: (threadId) => rpc.request<DiffSummary>('getDiffSummary', { threadId }),
-  fileAction: (threadId, action, path) => rpc.request<{ ok: boolean; error?: string }>('fileAction', { threadId, action, path })
+  fileAction: (threadId, action, paths) => rpc.request<{ ok: boolean; error?: string }>('fileAction', { threadId, action, paths })
 }))

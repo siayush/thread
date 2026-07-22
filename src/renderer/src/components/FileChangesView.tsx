@@ -46,7 +46,7 @@ function FileRow({
       onClick={onSelect}
       title={file.path}
     >
-      <span className={cn('min-w-0 flex-none truncate text-[12.5px]', active ? 'text-foreground' : 'text-foreground/85')}>{nameOf(file.path)}</span>
+      <span className={cn('min-w-0 shrink truncate text-[12.5px]', active ? 'text-foreground' : 'text-foreground/85')}>{nameOf(file.path)}</span>
       {dir && <span className="min-w-0 flex-1 truncate text-[10.5px] text-muted-foreground">{dir}</span>}
       {!dir && <span className="flex-1" />}
       {onAction && (
@@ -95,33 +95,43 @@ function FileRow({
 function Group({
   label,
   files,
-  bulkAction,
+  bulkActions,
   selected,
   onSelect,
   onAction
 }: {
   label: string
   files: DiffFile[]
-  bulkAction: { icon: JSX.Element; title: string; action: DiffAction } | null
+  bulkActions: { icon: JSX.Element; title: string; action: DiffAction }[]
   selected: string | null
   onSelect: (path: string) => void
-  onAction: ((action: DiffAction, path: string) => void) | null
+  onAction: ((action: DiffAction, paths: string[]) => void) | null
 }): JSX.Element | null {
   if (files.length === 0) return null
   return (
     <div className="group/grp py-1">
       <div className="flex items-center gap-1.5 px-2.5 pt-1.5 pb-1 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase select-none">
         <span>{label}</span>
-        {bulkAction && onAction && (
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            className="ml-1 hidden size-[18px] text-muted-foreground hover:text-foreground group-hover/grp:inline-flex"
-            title={bulkAction.title}
-            onClick={() => files.forEach((f) => onAction(bulkAction.action, f.path))}
-          >
-            {bulkAction.icon}
-          </Button>
+        {onAction && bulkActions.length > 0 && (
+          <span className="ml-1 hidden items-center gap-0.5 group-hover/grp:inline-flex">
+            {bulkActions.map((bulk) => (
+              <Button
+                key={bulk.action}
+                variant="ghost"
+                size="icon-xs"
+                className="size-[18px] text-muted-foreground hover:text-foreground"
+                title={bulk.title}
+                onClick={() =>
+                  onAction(
+                    bulk.action,
+                    files.map((f) => f.path)
+                  )
+                }
+              >
+                {bulk.icon}
+              </Button>
+            ))}
+          </span>
         )}
         <span className="ml-auto rounded-full bg-accent px-1.5 text-[10px] font-normal tracking-normal tabular-nums">{files.length}</span>
       </div>
@@ -132,7 +142,7 @@ function Group({
             file={f}
             active={selected === f.path}
             onSelect={() => onSelect(f.path)}
-            onAction={onAction ? (action) => onAction(action, f.path) : null}
+            onAction={onAction ? (action) => onAction(action, [f.path]) : null}
           />
         ))}
       </div>
@@ -163,10 +173,13 @@ export function FileChangesView(): JSX.Element {
     return () => window.removeEventListener('keydown', onKey)
   }, [setThreadView])
 
-  const runAction = async (action: DiffAction, path: string): Promise<void> => {
-    if (!activeThreadId) return
-    if (action === 'discard' && !window.confirm(`Discard changes to ${nameOf(path)}? This cannot be undone.`)) return
-    const res = await fileAction(activeThreadId, action, path)
+  const runAction = async (action: DiffAction, paths: string[]): Promise<void> => {
+    if (!activeThreadId || paths.length === 0) return
+    if (action === 'discard') {
+      const what = paths.length === 1 ? `changes to ${nameOf(paths[0])}` : `changes in ${paths.length} files`
+      if (!window.confirm(`Discard ${what}? This cannot be undone.`)) return
+    }
+    const res = await fileAction(activeThreadId, action, paths)
     if (!res.ok && res.error) window.alert(res.error)
     reload()
     if (projectId) refreshSummary(activeThreadId, projectId, true)
@@ -212,22 +225,25 @@ export function FileChangesView(): JSX.Element {
             <Group
               label="Staged Changes"
               files={staged}
-              bulkAction={{ icon: <Minus className="size-3" />, title: 'Unstage all', action: 'unstage' }}
+              bulkActions={[{ icon: <Minus className="size-3" />, title: 'Unstage All Changes', action: 'unstage' }]}
               selected={selectedFile}
               onSelect={setDiffSelectedFile}
-              onAction={(action, path) => void runAction(action, path)}
+              onAction={(action, paths) => void runAction(action, paths)}
             />
             <Group
               label="Changes"
               files={unstaged}
-              bulkAction={{ icon: <Plus className="size-3" />, title: 'Stage all', action: 'stage' }}
+              bulkActions={[
+                { icon: <Undo2 className="size-3" />, title: 'Discard All Changes', action: 'discard' },
+                { icon: <Plus className="size-3" />, title: 'Stage All Changes', action: 'stage' }
+              ]}
               selected={selectedFile}
               onSelect={setDiffSelectedFile}
-              onAction={(action, path) => void runAction(action, path)}
+              onAction={(action, paths) => void runAction(action, paths)}
             />
           </>
         ) : (
-          <Group label="Files" files={files} bulkAction={null} selected={selectedFile} onSelect={setDiffSelectedFile} onAction={null} />
+          <Group label="Files" files={files} bulkActions={[]} selected={selectedFile} onSelect={setDiffSelectedFile} onAction={null} />
         )}
       </div>
     </div>

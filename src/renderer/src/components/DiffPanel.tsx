@@ -1,16 +1,16 @@
-import { useEffect, useMemo, type ReactNode } from 'react'
-import { parsePatchFiles, type CodeViewDiffItem } from '@pierre/diffs'
-import { CodeView, WorkerPoolContextProvider } from '@pierre/diffs/react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { parsePatchFiles, type CodeViewDiffItem, type CodeViewItem } from '@pierre/diffs'
+import { CodeView, WorkerPoolContextProvider, type CodeViewHandle } from '@pierre/diffs/react'
 import DiffsWorker from '@pierre/diffs/worker/worker.js?worker'
 import { useUi } from '../state/uiStore'
 import { useDiffData } from '../state/diffStore'
 import type { ThreadDetail } from '@shared/domain'
-import { Rows3, Columns2, Undo, X } from 'lucide-react'
+import { Rows3, Columns2, Undo, ChevronDown, Copy, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
-const DIFF_THEME = 'pierre-dark'
+const DIFF_THEME = 'github-dark'
 
 /**
  * Bridges @pierre/diffs' internal styling to the Thread palette. Injected via the
@@ -35,17 +35,29 @@ const DIFF_UNSAFE_CSS = `
   --diffs-bg-separator-override: color-mix(in srgb, var(--background) 95%, var(--foreground));
   --diffs-bg-buffer-override: color-mix(in srgb, var(--background) 90%, var(--foreground));
 
-  --diffs-bg-addition-override: color-mix(in srgb, var(--background) 92%, var(--emerald));
-  --diffs-bg-addition-number-override: color-mix(in srgb, var(--background) 88%, var(--emerald));
-  --diffs-bg-addition-hover-override: color-mix(in srgb, var(--background) 85%, var(--emerald));
-  --diffs-bg-addition-emphasis-override: color-mix(in srgb, var(--background) 80%, var(--emerald));
+  --diffs-bg-addition-override: color-mix(in srgb, var(--background) 88%, var(--emerald));
+  --diffs-bg-addition-number-override: color-mix(in srgb, var(--background) 85%, var(--emerald));
+  --diffs-bg-addition-hover-override: color-mix(in srgb, var(--background) 82%, var(--emerald));
+  --diffs-bg-addition-emphasis-override: color-mix(in srgb, var(--background) 74%, var(--emerald));
 
-  --diffs-bg-deletion-override: color-mix(in srgb, var(--background) 92%, var(--destructive));
-  --diffs-bg-deletion-number-override: color-mix(in srgb, var(--background) 88%, var(--destructive));
-  --diffs-bg-deletion-hover-override: color-mix(in srgb, var(--background) 85%, var(--destructive));
-  --diffs-bg-deletion-emphasis-override: color-mix(in srgb, var(--background) 80%, var(--destructive));
+  --diffs-bg-deletion-override: color-mix(in srgb, var(--background) 88%, var(--destructive));
+  --diffs-bg-deletion-number-override: color-mix(in srgb, var(--background) 85%, var(--destructive));
+  --diffs-bg-deletion-hover-override: color-mix(in srgb, var(--background) 82%, var(--destructive));
+  --diffs-bg-deletion-emphasis-override: color-mix(in srgb, var(--background) 74%, var(--destructive));
 
   background-color: var(--diffs-bg) !important;
+}
+
+/* GitHub-PR-style file cards: rounded, bordered, one per file */
+[data-diff] {
+  border: 1px solid var(--border) !important;
+  border-radius: 10px;
+  overflow: clip;
+}
+
+/* hunk separators: just a thin quiet band, no "N unmodified lines" bar */
+[data-separator='simple'] {
+  min-height: 6px !important;
 }
 
 [data-file-info] {
@@ -83,7 +95,10 @@ const DIFF_UNSAFE_CSS = `
 function diffOptions(view: 'inline' | 'split') {
   return {
     diffStyle: view === 'split' ? 'split' : 'unified',
-    lineDiffType: 'none',
+    // char-level inner diff + no gutter tick marks, like VS Code's diff editor
+    lineDiffType: 'char',
+    diffIndicators: 'none',
+    hunkSeparators: 'simple',
     overflow: 'scroll',
     theme: DIFF_THEME,
     themeType: 'dark',
@@ -124,24 +139,138 @@ function fnv1a(s: string): string {
   return (h >>> 0).toString(36)
 }
 
-function PierreDiff({ patch, view }: { patch: string; view: 'inline' | 'split' }): JSX.Element {
+interface FileStat {
+  additions: number
+  deletions: number
+}
+
+/** GitHub-PR-style 5-square diffstat meter. */
+function DiffStatSquares({ additions, deletions }: FileStat): JSX.Element | null {
+  const total = additions + deletions
+  if (total === 0) return null
+  let green = Math.round((additions / total) * 5)
+  if (additions > 0) green = Math.max(1, green)
+  if (deletions > 0) green = Math.min(4, green)
+  return (
+    <span className="flex items-center gap-[2px]" aria-hidden>
+      {Array.from({ length: 5 }, (_, i) => (
+        <span key={i} className={cn('size-[7px] rounded-[1.5px]', i < green ? 'bg-emerald' : 'bg-destructive')} />
+      ))}
+    </span>
+  )
+}
+
+function CopyPathButton({ path }: { path: string }): JSX.Element {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      className="flex size-5 flex-none items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+      title="Copy file path"
+      onClick={(e) => {
+        e.stopPropagation()
+        void navigator.clipboard.writeText(path)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1200)
+      }}
+    >
+      {copied ? <Check className="size-3 text-emerald" /> : <Copy className="size-3" />}
+    </button>
+  )
+}
+
+function PierreDiff({
+  patch,
+  view,
+  stats,
+  selectedFile
+}: {
+  patch: string
+  view: 'inline' | 'split'
+  stats: Record<string, FileStat>
+  selectedFile: string | null
+}): JSX.Element {
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  const viewRef = useRef<CodeViewHandle<undefined>>(null)
+
   const items = useMemo<CodeViewDiffItem[]>(() => {
     if (!patch.trim()) return []
+    const key = fnv1a(patch)
     let parsed: ReturnType<typeof parsePatchFiles>
     try {
-      parsed = parsePatchFiles(patch, `thread:${fnv1a(patch)}`)
+      parsed = parsePatchFiles(patch, `thread:${key}`)
     } catch {
       return []
     }
-    return parsed.flatMap((p) => p.files).map((fileDiff, i) => ({ id: String(i), type: 'diff' as const, fileDiff }))
-  }, [patch])
+    // collapse toggles must bump `version`, or CodeView's reconciler ignores
+    // the updated item for an id it already knows
+    return parsed.flatMap((p) => p.files).map((fileDiff, i) => ({
+      id: `${key}:${i}`,
+      type: 'diff' as const,
+      fileDiff,
+      collapsed: !!collapsed[fileDiff.name],
+      version: collapsed[fileDiff.name] ? 1 : 0
+    }))
+  }, [patch, collapsed])
 
   const options = useMemo(() => diffOptions(view), [view])
+
+  // selecting a file in the sidebar scrolls to its card (expanding it first if collapsed)
+  useEffect(() => {
+    if (!selectedFile) return
+    const item = items.find((i) => i.fileDiff.name === selectedFile)
+    if (!item) return
+    const raf = requestAnimationFrame(() => {
+      setCollapsed((prev) => (prev[selectedFile] ? { ...prev, [selectedFile]: false } : prev))
+      viewRef.current?.scrollTo({ type: 'item', id: item.id, align: 'start', behavior: 'smooth' })
+    })
+    return () => cancelAnimationFrame(raf)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedFile, items.length])
+
+  const renderHeader = useCallback(
+    (item: CodeViewItem): ReactNode => {
+      if (item.type !== 'diff') return null
+      const name = item.fileDiff.name
+      const isCollapsed = !!collapsed[name]
+      const stat = stats[name]
+      return (
+        <div
+          className="flex h-full w-full cursor-pointer items-center gap-1.5 pr-3 pl-1.5 select-none"
+          onClick={() => setCollapsed((prev) => ({ ...prev, [name]: !prev[name] }))}
+        >
+          <span className="flex size-5 flex-none items-center justify-center rounded text-muted-foreground">
+            <ChevronDown className={cn('size-3.5 transition-transform duration-150', isCollapsed && '-rotate-90')} />
+          </span>
+          <span className="truncate font-mono text-[12px] text-foreground">
+            {item.fileDiff.prevName && item.fileDiff.prevName !== name ? `${item.fileDiff.prevName} → ${name}` : name}
+          </span>
+          <CopyPathButton path={name} />
+          {stat && (
+            <span className="ml-auto flex flex-none items-center gap-2 font-mono text-[11px] tabular-nums">
+              <span>
+                <span className="text-emerald">+{stat.additions}</span> <span className="text-destructive">−{stat.deletions}</span>
+              </span>
+              <DiffStatSquares additions={stat.additions} deletions={stat.deletions} />
+            </span>
+          )}
+        </div>
+      )
+    },
+    [collapsed, stats]
+  )
 
   if (items.length === 0) return <DiffMessage>Unable to render this diff.</DiffMessage>
   return (
     <DiffWorkerPool>
-      <CodeView className="h-full" items={items} options={options} />
+      {/* CodeView's root element is its own scroll container (it attaches its
+          scroll listener there), so it must get overflow-y itself */}
+      <CodeView
+        ref={viewRef}
+        className="h-full overflow-y-auto overscroll-contain px-3"
+        items={items}
+        options={options}
+        renderCustomHeader={renderHeader}
+      />
     </DiffWorkerPool>
   )
 }
@@ -152,16 +281,18 @@ export function DiffPanel({ detail }: { detail: ThreadDetail }): JSX.Element {
   const diffView = useUi((s) => s.diffView)
   const setDiffView = useUi((s) => s.setDiffView)
   const selectedFile = useUi((s) => s.diffSelectedFile)
-  const setDiffSelectedFile = useUi((s) => s.setDiffSelectedFile)
   const result = useDiffData((s) => s.result)
   const loading = useDiffData((s) => s.loading)
   const load = useDiffData((s) => s.load)
+  const setTarget = useDiffData((s) => s.setTarget)
 
   const threadId = detail.thread.id
   const scopeKey = diffScope.kind === 'turn' ? diffScope.turnId : 'working'
 
-  // debounced: working-tree diffs re-snapshot the whole tree
+  // debounced: working-tree diffs re-snapshot the whole tree. Retarget the
+  // store immediately though, so switching threads doesn't flash the old diff
   useEffect(() => {
+    setTarget(threadId, diffScope)
     const t = setTimeout(() => void load(threadId, diffScope), 200)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -178,15 +309,21 @@ export function DiffPanel({ detail }: { detail: ThreadDetail }): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detail.turns, detail.checkpoints])
 
-  // when a file is selected in the sidebar, render only its patch; otherwise the whole scope
-  const files = useMemo(() => {
-    const all = result?.files ?? []
-    if (!selectedFile) return all
-    const focused = all.filter((f) => f.path === selectedFile)
-    return focused.length > 0 ? focused : all
-  }, [result, selectedFile])
+  // always render the whole scope; selecting a file in the sidebar scrolls to it
+  const files = useMemo(() => result?.files ?? [], [result])
 
   const patch = useMemo(() => files.map((f) => f.patch).filter(Boolean).join('\n'), [files])
+
+  // per-file ±counts for the file-card headers; a partially staged file appears
+  // twice in `files` (staged + unstaged), so sum the two entries
+  const stats = useMemo(() => {
+    const map: Record<string, FileStat> = {}
+    for (const f of files) {
+      const cur = map[f.path]
+      map[f.path] = cur ? { additions: cur.additions + f.additions, deletions: cur.deletions + f.deletions } : { additions: f.additions, deletions: f.deletions }
+    }
+    return map
+  }, [files])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -215,15 +352,6 @@ export function DiffPanel({ detail }: { detail: ThreadDetail }): JSX.Element {
             {result.files.length} file{result.files.length === 1 ? '' : 's'} · <span className="text-emerald">+{result.additions}</span>{' '}
             <span className="text-destructive">−{result.deletions}</span>
           </span>
-        )}
-        {selectedFile && (
-          <button
-            className="no-drag flex items-center gap-1 rounded-md bg-primary/10 px-2 py-0.5 text-[11px] text-primary hover:bg-primary/15"
-            onClick={() => setDiffSelectedFile(null)}
-            title="Show all files"
-          >
-            {selectedFile.split('/').pop()} <X className="size-3" />
-          </button>
         )}
         <div className="no-drag ml-auto flex items-center gap-0.5 rounded-lg bg-muted p-0.5">
           <Button
@@ -255,7 +383,7 @@ export function DiffPanel({ detail }: { detail: ThreadDetail }): JSX.Element {
         {loading && !result && <DiffMessage>Loading diff…</DiffMessage>}
         {!loading && result?.error && <DiffMessage>{result.error}</DiffMessage>}
         {result && !result.error && result.files.length === 0 && !loading && <DiffMessage>No changes.</DiffMessage>}
-        {result && !result.error && files.length > 0 && <PierreDiff patch={patch} view={diffView} />}
+        {result && !result.error && files.length > 0 && <PierreDiff patch={patch} view={diffView} stats={stats} selectedFile={selectedFile} />}
       </div>
     </div>
   )

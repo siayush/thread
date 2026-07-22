@@ -20,7 +20,7 @@ export function registerRpc(engine: Engine): () => void {
       case 'getDiffSummary':
         return engine.getDiffSummary(params.threadId)
       case 'fileAction':
-        return engine.applyFileAction(params.threadId, params.action, params.path)
+        return engine.applyFileAction(params.threadId, params.action, params.paths)
       case 'listModels':
         return { models: mergeCodexAgentModels(await getCodexAgentModels()) }
     }

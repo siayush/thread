@@ -448,9 +448,9 @@ export class Engine implements AgentHost {
     return workingSummary(info.project.folderPath)
   }
 
-  async applyFileAction(threadId: string, action: DiffAction, path: string): Promise<{ ok: boolean; error?: string }> {
+  async applyFileAction(threadId: string, action: DiffAction, paths: string[]): Promise<{ ok: boolean; error?: string }> {
     const info = getThreadProjectPath(this.db, threadId)
     if (!info) return { ok: false, error: 'Thread not found' }
-    return applyFileAction(info.project.folderPath, action, path)
+    return applyFileAction(info.project.folderPath, action, paths)
   }
 }
