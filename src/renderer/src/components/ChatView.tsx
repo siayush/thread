@@ -6,6 +6,8 @@ import { Composer } from './Composer'
 import { DiffPanel } from './DiffPanel'
 import { SourceControlIcon } from '@/components/ui/source-control-icon'
 import { Badge } from '@/components/ui/badge'
+import { cn } from '@/lib/utils'
+import { SidebarToggle } from './Sidebar'
 import { useDiffSummary } from '../state/diffStore'
 
 export function ChatView({ threadId }: { threadId: string }): JSX.Element {
@@ -22,6 +24,7 @@ export function ChatView({ threadId }: { threadId: string }): JSX.Element {
   const project = useServer((s) => (detail ? s.shell.projects.find((p) => p.id === detail.thread.projectId) : undefined))
   const threadView = useUi((s) => s.threadView)
   const openDiff = useUi((s) => s.openDiff)
+  const sidebarCollapsed = useUi((s) => s.sidebarCollapsed)
   const changeCount = useDiffSummary((s) => (detail ? s.byProject[detail.thread.projectId]?.files ?? 0 : 0))
   const summary = useDiffSummary((s) => (detail ? s.byProject[detail.thread.projectId] : undefined))
   const fetchSummary = useDiffSummary((s) => s.fetch)
@@ -47,16 +50,17 @@ export function ChatView({ threadId }: { threadId: string }): JSX.Element {
   // the diff view fills the main area; the sidebar (FileChangesView) carries the file list + back button
   if (threadView === 'diff') {
     return (
-      <div className="flex min-h-0 flex-1 flex-col">
+      <div key="diff" className="flex min-h-0 flex-1 flex-col duration-200 ease-out animate-in fade-in slide-in-from-right-4">
         <DiffPanel detail={detail} />
       </div>
     )
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <header className="drag-region flex h-13 items-center justify-between border-b pr-3.5 pl-5">
-        <div className="no-drag flex min-w-0 items-baseline gap-2.5">
+    <div key="chat" className="flex min-h-0 flex-1 flex-col duration-200 ease-out animate-in fade-in slide-in-from-left-4">
+      <header className={cn('drag-region flex h-13 items-center justify-between border-b pr-3.5', sidebarCollapsed ? 'pl-19' : 'pl-5')}>
+        <div className="no-drag flex min-w-0 items-center gap-2.5">
+          {sidebarCollapsed && <SidebarToggle />}
           <span className="text-[13.5px] font-semibold whitespace-nowrap">{thread.title}</span>
         </div>
         <div className="no-drag flex items-center gap-1.5">

@@ -1,9 +1,10 @@
 import { useEffect } from 'react'
 import { useServer } from './state/serverStore'
 import { useUi } from './state/uiStore'
-import { Sidebar } from './components/Sidebar'
+import { Sidebar, SidebarToggle } from './components/Sidebar'
 import { ChatView } from './components/ChatView'
 import { CommandPalette } from './components/CommandPalette'
+import { cn } from '@/lib/utils'
 import { Sparkles } from 'lucide-react'
 
 export default function App(): JSX.Element {
@@ -13,6 +14,7 @@ export default function App(): JSX.Element {
   const openTab = useUi((s) => s.openTab)
   const setActive = useUi((s) => s.setActive)
   const setCommandPaletteOpen = useUi((s) => s.setCommandPaletteOpen)
+  const sidebarCollapsed = useUi((s) => s.sidebarCollapsed)
 
   useEffect(() => {
     init()
@@ -27,12 +29,17 @@ export default function App(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready])
 
-  // global shortcut: ⌘K / Ctrl+K → command palette
+  // global shortcuts: ⌘K → command palette, ⌘B → toggle sidebar
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      if (!(e.metaKey || e.ctrlKey)) return
+      const key = e.key.toLowerCase()
+      if (key === 'k') {
         e.preventDefault()
         setCommandPaletteOpen(true)
+      } else if (key === 'b') {
+        e.preventDefault()
+        useUi.getState().toggleSidebar()
       }
     }
     window.addEventListener('keydown', onKey)
@@ -49,14 +56,15 @@ export default function App(): JSX.Element {
   }
 
   return (
-    <div className="relative flex h-full">
+    <div className="relative flex h-full overflow-hidden">
       <Sidebar />
       <main className="flex min-w-0 flex-1 flex-col">
         {activeThreadId ? (
           <ChatView key={activeThreadId} threadId={activeThreadId} />
         ) : (
           <div className="flex min-h-0 flex-1 flex-col bg-background">
-            <header className="drag-region flex h-13 items-center border-b px-5">
+            <header className={cn('drag-region flex h-13 items-center gap-1.5 border-b pr-5', sidebarCollapsed ? 'pl-19' : 'pl-5')}>
+              {sidebarCollapsed && <SidebarToggle />}
               <span className="text-xs text-muted-foreground/50">No active thread</span>
             </header>
             <div className="grid flex-1 place-items-center text-muted-foreground">

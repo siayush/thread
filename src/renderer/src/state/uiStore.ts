@@ -8,6 +8,7 @@ export type DiffView = 'inline' | 'split'
 
 interface UiState {
   activeThreadId: string | null
+  sidebarCollapsed: boolean
   expandedProjects: Record<string, boolean>
   threadView: ThreadView
   /** which file the diff view is focused on; null = all files */
@@ -19,6 +20,8 @@ interface UiState {
   /** open a thread in the main view (single active thread) */
   openTab: (threadId: string) => void
   setActive: (threadId: string | null) => void
+  toggleSidebar: () => void
+  setSidebarCollapsed: (collapsed: boolean) => void
   toggleProject: (projectId: string) => void
   setProjectExpanded: (projectId: string, expanded: boolean) => void
   setThreadView: (view: ThreadView) => void
@@ -34,6 +37,7 @@ export const useUi = create<UiState>()(
   persist(
     (set) => ({
       activeThreadId: null,
+      sidebarCollapsed: false,
       expandedProjects: {},
       threadView: 'chat',
       diffSelectedFile: null,
@@ -44,6 +48,9 @@ export const useUi = create<UiState>()(
       openTab: (threadId) => set({ activeThreadId: threadId, threadView: 'chat' }),
 
       setActive: (threadId) => set({ activeThreadId: threadId }),
+
+      toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+      setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
 
       toggleProject: (projectId) => set((s) => ({ expandedProjects: { ...s.expandedProjects, [projectId]: !(s.expandedProjects[projectId] ?? true) } })),
       setProjectExpanded: (projectId, expanded) => set((s) => ({ expandedProjects: { ...s.expandedProjects, [projectId]: expanded } })),
@@ -60,6 +67,7 @@ export const useUi = create<UiState>()(
       name: 'thread:ui',
       partialize: (s) => ({
         activeThreadId: s.activeThreadId,
+        sidebarCollapsed: s.sidebarCollapsed,
         expandedProjects: s.expandedProjects,
         diffScope: s.diffScope,
         diffView: s.diffView
