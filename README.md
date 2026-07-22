@@ -4,12 +4,14 @@
 
 <h1 align="center">Thread</h1>
 
-A desktop client for the **Claude coding agent** — Electron + a local event-sourced
-server + a WebSocket RPC, driving the Claude Agent SDK.
+<p align="center">A local desktop client for coding agents — Claude and OpenAI Codex — in one chat UI.</p>
 
 Pick a project folder, open a thread, and pair with the agent: streaming responses,
 live tool calls and reasoning, tool-use approvals, Plan/Build modes, and a per-turn
-git diff viewer. Local only — no cloud, no auth.
+git diff viewer. Runs locally — no cloud backend, no accounts.
+
+Built on Electron + a local event-sourced server + a WebSocket RPC, driving the
+Claude Agent SDK and the OpenAI/Codex agents.
 
 ## Run
 
@@ -18,32 +20,19 @@ pnpm install
 pnpm run dev
 ```
 
-Auth reuses your logged-in **Claude Code CLI** credentials — no `ANTHROPIC_API_KEY`
-needed if `claude` already works in your terminal.
+The selected model in the composer picks the provider for that turn.
 
 ## Features
 
-- **Streaming chat** — token-level assistant output, thinking blocks, tool calls and
-  file edits shown live as work items
+- **Streaming chat** — token-level output, thinking blocks, and tool/file-edit
+  activity shown live as work items
 - **Approvals** — the agent pauses for permission (Approve / Always allow / Decline);
-  runtime modes: Supervised, Auto-accept edits, Full access
+  modes: Supervised, Auto-accept edits, Full access
 - **Plan mode** — read-only planning (Shift+Tab to toggle)
 - **Diffs** — per-turn git checkpoints and a working-tree diff panel (inline/split),
-  without ever touching your real index
-- **Model picker** — Opus / Sonnet / Haiku or your CLI default
-- **Multi-turn sessions** — SDK session resume per thread; auto-generated thread titles
-
-## Architecture
-
-```
-Electron main
-  └─ local server (in-process)
-      ├─ sql.js event log + projections (rebuilt on schema changes)
-      ├─ engine: command → events → projections → broadcast
-      ├─ Claude Agent SDK adapter (streaming, tools, approvals, plans)
-      ├─ git checkpoints via temp-index snapshots
-      └─ WebSocket RPC ← React renderer (Zustand stores)
-```
+  without touching your real index
+- **Model picker** — Claude and Codex models, with per-model reasoning effort
+- **Multi-turn sessions** — session resume per thread; auto-generated thread titles
 
 The renderer never touches Node/OS directly (`contextIsolation: true`); everything
 flows over the WS RPC, with a minimal preload bridge for dialogs and links.
