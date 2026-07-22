@@ -4,7 +4,7 @@ import { isProjectExpanded, useUi } from '../state/uiStore'
 import { useDiffSummary } from '../state/diffStore'
 import { FileChangesView } from './FileChangesView'
 import type { Project, ThreadSummary } from '@shared/domain'
-import { ChevronDown, ChevronRight, Ellipsis, Folder, SquarePen, Plus, Search, FolderPlus } from 'lucide-react'
+import { ChevronDown, ChevronRight, Ellipsis, Folder, SquarePen, Plus, Search, FolderPlus, PanelLeft } from 'lucide-react'
 import { SourceControlIcon } from '@/components/ui/source-control-icon'
 import { relativeTime } from '../lib/format'
 import { cn } from '@/lib/utils'
@@ -13,6 +13,24 @@ import { Badge } from '@/components/ui/badge'
 import { Spinner } from '@/components/ui/spinner'
 import { Input } from '@/components/ui/input'
 import { Kbd } from '@/components/ui/kbd'
+
+/** Toggles the sidebar; shown in the sidebar header when open, in the main-pane headers when collapsed. */
+export function SidebarToggle({ className }: { className?: string }): JSX.Element {
+  const collapsed = useUi((s) => s.sidebarCollapsed)
+  const toggleSidebar = useUi((s) => s.toggleSidebar)
+  return (
+    <Button
+      variant="ghost"
+      size="icon-xs"
+      className={cn('no-drag text-muted-foreground', className)}
+      title={collapsed ? 'Show sidebar' : 'Hide sidebar'}
+      aria-label={collapsed ? 'Show sidebar' : 'Hide sidebar'}
+      onClick={toggleSidebar}
+    >
+      <PanelLeft className="size-[15px]" />
+    </Button>
+  )
+}
 
 /** A thread is actively generating a response. The only status surfaced in the sidebar. */
 function isGenerating(t: ThreadSummary): boolean {
@@ -277,6 +295,7 @@ export function Sidebar(): JSX.Element {
   const setCommandPaletteOpen = useUi((s) => s.setCommandPaletteOpen)
   const threadView = useUi((s) => s.threadView)
   const activeThreadId = useUi((s) => s.activeThreadId)
+  const collapsed = useUi((s) => s.sidebarCollapsed)
   const diffMode = threadView === 'diff' && !!activeThreadId
 
   const addProject = async (): Promise<void> => {
@@ -295,17 +314,30 @@ export function Sidebar(): JSX.Element {
   }
 
   return (
-    <aside className="flex w-66 shrink-0 flex-col overflow-hidden border-r bg-card">
-      <div className="drag-region flex h-13 items-center gap-1 pr-3 pl-19">
-        <span className="no-drag flex items-center gap-1.5 overflow-hidden">
+    <>
+      {/* in-flow spacer: animates its width so the layout follows the panel's slide */}
+      <div
+        aria-hidden
+        className={cn('shrink-0 transition-[width] duration-200 ease-linear', collapsed ? 'w-0' : 'w-66')}
+      />
+      {/* fixed full-width panel slides off-canvas when collapsed — full width so its content doesn't reflow mid-slide */}
+      <aside
+        className={cn(
+          'fixed inset-y-0 left-0 z-10 flex w-66 flex-col overflow-hidden border-r bg-card transition-[left] duration-200 ease-linear',
+          collapsed && '-left-66'
+        )}
+      >
+      <div className="drag-region flex h-13 items-center gap-1 pr-2 pl-19">
+        <span className="no-drag flex flex-1 items-center gap-1.5 overflow-hidden">
           <span className="text-sm font-semibold tracking-tight text-foreground">Thread</span>
         </span>
+        <SidebarToggle />
       </div>
 
       {diffMode ? (
         <FileChangesView />
       ) : (
-        <>
+        <div className="flex min-h-0 flex-1 flex-col duration-200 ease-out animate-in fade-in slide-in-from-left-4">
           <Button
             variant="ghost"
             className="mx-2 my-1 h-auto justify-start gap-2 px-2 py-1.5 text-[13px] font-normal text-muted-foreground"
@@ -339,8 +371,9 @@ export function Sidebar(): JSX.Element {
               projects.map((p) => <ProjectRow key={p.id} project={p} />)
             )}
           </div>
-        </>
+        </div>
       )}
-    </aside>
+      </aside>
+    </>
   )
 }

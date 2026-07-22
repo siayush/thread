@@ -3,6 +3,7 @@ import { parsePatchFiles, type CodeViewDiffItem, type CodeViewItem } from '@pier
 import { CodeView, WorkerPoolContextProvider, type CodeViewHandle } from '@pierre/diffs/react'
 import DiffsWorker from '@pierre/diffs/worker/worker.js?worker'
 import { useUi } from '../state/uiStore'
+import { SidebarToggle } from './Sidebar'
 import { useDiffData } from '../state/diffStore'
 import type { ThreadDetail } from '@shared/domain'
 import { Rows3, Columns2, Undo, ChevronDown, Copy, Check } from 'lucide-react'
@@ -278,6 +279,7 @@ function PierreDiff({
 export function DiffPanel({ detail }: { detail: ThreadDetail }): JSX.Element {
   const diffScope = useUi((s) => s.diffScope)
   const setDiffScope = useUi((s) => s.setDiffScope)
+  const sidebarCollapsed = useUi((s) => s.sidebarCollapsed)
   const diffView = useUi((s) => s.diffView)
   const setDiffView = useUi((s) => s.setDiffView)
   const selectedFile = useUi((s) => s.diffSelectedFile)
@@ -327,7 +329,8 @@ export function DiffPanel({ detail }: { detail: ThreadDetail }): JSX.Element {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="drag-region flex h-13 items-center gap-2.5 border-b px-3">
+      <div className={cn('drag-region flex h-13 items-center gap-2.5 border-b pr-3', sidebarCollapsed ? 'pl-19' : 'pl-3')}>
+        {sidebarCollapsed && <SidebarToggle />}
         <Select
           items={scopeItems}
           value={scopeKey}
