@@ -1,0 +1,137 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --font-sans:
+    'DM Sans Variable', 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui,
+    sans-serif;
+  --font-mono: 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+
+  --animate-blink: blink 1s step-start infinite;
+  @keyframes blink {
+    50% {
+      opacity: 0;
+    }
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Thread accent palette (status dots, pills, plan cards, diffs) */
+  --color-sky: var(--sky);
+  --color-emerald: var(--emerald);
+  --color-amber: var(--amber);
+  --color-violet: var(--violet);
+  --color-idle: var(--idle);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* Thread is a dark-only app: the same palette backs :root and .dark */
+:root,
+.dark {
+  --neutral-950: oklch(0.145 0 0);
+  --neutral-500: oklch(0.556 0 0);
+  --neutral-100: oklch(0.97 0 0);
+
+  --background: color-mix(in srgb, var(--neutral-950) 95%, white);
+  --foreground: var(--neutral-100);
+  --card: color-mix(in srgb, var(--background) 98%, white);
+  --card-foreground: var(--neutral-100);
+  --popover: color-mix(in srgb, var(--background) 90%, white);
+  --popover-foreground: var(--neutral-100);
+  --primary: oklch(0.588 0.217 264);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: color-mix(in srgb, var(--background) 90%, white);
+  --secondary-foreground: var(--neutral-100);
+  --muted: rgba(255, 255, 255, 0.04);
+  --muted-foreground: color-mix(in srgb, var(--neutral-500) 90%, white);
+  --accent: rgba(255, 255, 255, 0.06);
+  --accent-foreground: var(--neutral-100);
+  --destructive: color-mix(in srgb, oklch(0.637 0.237 25.331) 90%, white);
+  --border: rgba(255, 255, 255, 0.06);
+  --input: rgba(255, 255, 255, 0.1);
+  --ring: color-mix(in oklch, oklch(0.588 0.217 264) 60%, transparent);
+  --radius: 0.625rem;
+
+  --sky: oklch(0.623 0.214 259.815);
+  --emerald: oklch(0.696 0.17 162.48);
+  --amber: oklch(0.769 0.188 70.08);
+  --violet: #a78bfa;
+  --idle: color-mix(in srgb, var(--neutral-500) 60%, transparent);
+
+  color-scheme: dark;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+  }
+  body {
+    @apply bg-background text-foreground relative overflow-hidden text-[13px] antialiased;
+  }
+  /* Subtle film-grain overlay */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-repeat: repeat;
+    background-size: 256px 256px;
+  }
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+  }
+}
+
+/* Electron window dragging */
+.drag-region {
+  -webkit-app-region: drag;
+}
+.no-drag {
+  -webkit-app-region: no-drag;
+}
