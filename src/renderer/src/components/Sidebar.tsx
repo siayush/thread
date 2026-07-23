@@ -65,6 +65,8 @@ function RenameInput({ initial, onCommit, onCancel }: { initial: string; onCommi
 
 function ProjectRow({ project }: { project: Project }): JSX.Element {
   const threads = useServer((s) => s.shell.threads.filter((t) => t.projectId === project.id))
+  // threads awaiting an approval are listed in the "Needs you" section instead; they return here once answered
+  const visibleThreads = threads.filter((t) => !t.hasPendingApproval)
   const activeThreadId = useUi((s) => s.activeThreadId)
   const expandedMap = useUi((s) => s.expandedProjects)
   const toggleProject = useUi((s) => s.toggleProject)
@@ -199,7 +201,7 @@ function ProjectRow({ project }: { project: Project }): JSX.Element {
       {expanded && (
         <div className="my-0.5 mb-1 ml-3.5 flex flex-col gap-px border-l pl-2">
           {threads.length === 0 && <div className="px-2 py-1 text-[10.5px] text-foreground/35">No threads yet</div>}
-          {threads.map((t) => {
+          {visibleThreads.map((t) => {
             const generating = isGenerating(t)
             if (t.id === renamingThreadId) {
               return (
@@ -234,12 +236,7 @@ function ProjectRow({ project }: { project: Project }): JSX.Element {
                 >
                   <span className="min-w-0 flex-1 truncate">{t.title}</span>
                 </Button>
-                {t.hasPendingApproval ? (
-                  <span
-                    title="Awaiting approval"
-                    className="size-[7px] shrink-0 rounded-full bg-amber shadow-[0_0_0_3px_color-mix(in_oklch,var(--color-amber)_20%,transparent)] group-hover/thread:hidden"
-                  />
-                ) : generating ? (
+                {generating ? (
                   <Spinner className="size-3 shrink-0 text-muted-foreground group-hover/thread:hidden" />
                 ) : (
                   <span className={cn('text-[10px] text-foreground/35 tabular-nums group-hover/thread:hidden', t.id === activeThreadId && 'hidden')}>
@@ -284,6 +281,65 @@ function ProjectRow({ project }: { project: Project }): JSX.Element {
           </Button>
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * Threads waiting on the user (a pending tool approval) surface here, above the
+ * project tree. Answering the approval drops the thread back into its project.
+ */
+function NeedsYouSection(): JSX.Element | null {
+  const pending = useServer((s) => s.shell.threads.filter((t) => t.hasPendingApproval))
+  const projects = useServer((s) => s.shell.projects)
+  const dispatch = useServer((s) => s.dispatch)
+  const openTab = useUi((s) => s.openTab)
+  const activeThreadId = useUi((s) => s.activeThreadId)
+
+  if (pending.length === 0) return null
+
+  const openThread = (threadId: string): void => {
+    openTab(threadId)
+    void dispatch({ type: 'thread.visit', threadId })
+  }
+
+  return (
+    <div className="mb-1">
+      <div className="flex items-center gap-1.5 px-3 pt-2 pb-1 text-[11px] font-medium tracking-wider text-amber uppercase">
+        <span>Needs you</span>
+        <Badge className="h-4 min-w-[17px] border-none bg-amber/15 px-1.5 text-[10px] text-amber">{pending.length}</Badge>
+      </div>
+      <div className="flex flex-col gap-px px-2">
+        {pending.map((t) => {
+          const project = projects.find((p) => p.id === t.projectId)
+          return (
+            <div
+              key={t.id}
+              className={cn(
+                'group/thread flex h-[27px] items-center gap-[7px] rounded-md pr-2 hover:bg-muted',
+                t.id === activeThreadId && 'bg-primary/10 hover:bg-primary/10'
+              )}
+            >
+              <Button
+                variant="ghost"
+                className={cn(
+                  'h-full min-w-0 flex-1 justify-start gap-[7px] rounded-md px-2 text-left text-[12.5px] font-normal text-muted-foreground group-hover/thread:text-foreground hover:bg-transparent dark:hover:bg-transparent',
+                  t.id === activeThreadId && 'font-medium text-foreground'
+                )}
+                title={project ? `${project.name} — awaiting your approval` : 'Awaiting your approval'}
+                onClick={() => openThread(t.id)}
+              >
+                <span className="min-w-0 flex-1 truncate">{t.title}</span>
+                {project && <span className="shrink-0 text-[10px] text-foreground/35">{project.name}</span>}
+              </Button>
+              <span
+                title="Awaiting approval"
+                className="size-[7px] shrink-0 rounded-full bg-amber shadow-[0_0_0_3px_color-mix(in_oklch,var(--color-amber)_20%,transparent)]"
+              />
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -347,6 +403,8 @@ export function Sidebar(): JSX.Element {
             <span className="flex-1 text-left">Search</span>
             <Kbd>⌘K</Kbd>
           </Button>
+
+          <NeedsYouSection />
 
           <div className="flex items-center justify-between px-3 pt-2 pb-1 text-[11px] font-medium tracking-wider text-muted-foreground/75 uppercase">
             <span>Projects</span>
