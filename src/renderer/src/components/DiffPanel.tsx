@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { parsePatchFiles, type CodeViewDiffItem, type CodeViewItem } from '@pierre/diffs'
-import { CodeView, WorkerPoolContextProvider, type CodeViewHandle } from '@pierre/diffs/react'
-import DiffsWorker from '@pierre/diffs/worker/worker.js?worker'
+import { CodeView, type CodeViewHandle } from '@pierre/diffs/react'
+import { fnv1a } from './CodeWorkerPool'
 import { useUi } from '../state/uiStore'
 import { SidebarToggle } from './Sidebar'
 import { useDiffData } from '../state/diffStore'
@@ -10,8 +10,6 @@ import { ArrowLeft, Rows3, Columns2, Undo, ChevronDown, Copy, Check } from 'luci
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-
-const DIFF_THEME = 'github-dark'
 
 /**
  * Bridges @pierre/diffs' internal styling to the Thread palette. Injected via the
@@ -101,7 +99,6 @@ function diffOptions(view: 'inline' | 'split') {
     diffIndicators: 'none',
     hunkSeparators: 'simple',
     overflow: 'scroll',
-    theme: DIFF_THEME,
     themeType: 'dark',
     unsafeCSS: DIFF_UNSAFE_CSS,
     stickyHeaders: true,
@@ -109,35 +106,8 @@ function diffOptions(view: 'inline' | 'split') {
   } as const
 }
 
-/** Shares one shiki worker pool for syntax highlighting. */
-function DiffWorkerPool({ children }: { children: ReactNode }): JSX.Element {
-  const poolSize = useMemo(() => {
-    const cores = typeof navigator === 'undefined' ? 4 : Math.max(1, navigator.hardwareConcurrency || 4)
-    return Math.max(2, Math.min(6, Math.floor(cores / 2)))
-  }, [])
-  return (
-    <WorkerPoolContextProvider
-      poolOptions={{ workerFactory: () => new DiffsWorker(), poolSize, totalASTLRUCacheSize: 240 }}
-      highlighterOptions={{ theme: DIFF_THEME, tokenizeMaxLineLength: 1000, useTokenTransformer: true }}
-    >
-      {children}
-    </WorkerPoolContextProvider>
-  )
-}
-
 function DiffMessage({ children }: { children: ReactNode }): JSX.Element {
   return <div className="p-5 text-center text-[12.5px] text-muted-foreground">{children}</div>
-}
-
-/** FNV-1a content hash — the worker pool caches rendered diffs by this key,
- *  so it must change whenever the patch text does (length alone collides). */
-function fnv1a(s: string): string {
-  let h = 0x811c9dc5
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i)
-    h = Math.imul(h, 0x01000193)
-  }
-  return (h >>> 0).toString(36)
 }
 
 interface FileStat {
@@ -262,17 +232,15 @@ function PierreDiff({
 
   if (items.length === 0) return <DiffMessage>Unable to render this diff.</DiffMessage>
   return (
-    <DiffWorkerPool>
-      {/* CodeView's root element is its own scroll container (it attaches its
-          scroll listener there), so it must get overflow-y itself */}
-      <CodeView
-        ref={viewRef}
-        className="h-full overflow-y-auto overscroll-contain px-3"
-        items={items}
-        options={options}
-        renderCustomHeader={renderHeader}
-      />
-    </DiffWorkerPool>
+    /* CodeView's root element is its own scroll container (it attaches its
+       scroll listener there), so it must get overflow-y itself */
+    <CodeView
+      ref={viewRef}
+      className="h-full overflow-y-auto overscroll-contain px-3"
+      items={items}
+      options={options}
+      renderCustomHeader={renderHeader}
+    />
   )
 }
 
@@ -292,10 +260,16 @@ export function DiffPanel({ detail }: { detail: ThreadDetail }): JSX.Element {
   const threadId = detail.thread.id
   const scopeKey = diffScope.kind === 'turn' ? diffScope.turnId : 'working'
 
-  // debounced: working-tree diffs re-snapshot the whole tree. Retarget the
-  // store immediately though, so switching threads doesn't flash the old diff
+  // Retarget the store immediately so switching threads doesn't flash the old
+  // diff. A cleared result means the target changed (or was never loaded) —
+  // fetch it right away; same-target refreshes from checkpoint/status churn
+  // stay debounced because working-tree diffs re-snapshot the whole tree.
   useEffect(() => {
     setTarget(threadId, diffScope)
+    if (useDiffData.getState().result === null) {
+      void load(threadId, diffScope)
+      return
+    }
     const t = setTimeout(() => void load(threadId, diffScope), 200)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
