@@ -3,7 +3,7 @@ import { useServer } from '../state/serverStore'
 import { useUi } from '../state/uiStore'
 import { useDiffData, useDiffSummary } from '../state/diffStore'
 import type { DiffAction, DiffFile } from '@shared/diff'
-import { ChevronLeft, Minus, Plus, Undo2 } from 'lucide-react'
+import { Minus, Plus, Undo2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { SourceControlIcon } from '@/components/ui/source-control-icon'
@@ -191,18 +191,8 @@ export function FileChangesView(): JSX.Element {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col duration-200 ease-out animate-in fade-in slide-in-from-right-4">
-      <Button
-        variant="ghost"
-        className="mx-2 mt-1 h-8 justify-start gap-2 px-2 text-[12.5px] font-normal text-muted-foreground"
-        onClick={() => setThreadView('chat')}
-      >
-        <ChevronLeft className="size-[15px]" />
-        <span className="flex-1 text-left">Threads</span>
-        <span className="rounded border border-input px-1.5 text-[10px] text-muted-foreground">esc</span>
-      </Button>
-
       {detail && (
-        <div className="mx-2 mb-1 flex items-center gap-2 rounded-lg border bg-muted px-2.5 py-1.5">
+        <div className="mx-2 mt-1 mb-1 flex items-center gap-2 rounded-lg border bg-muted px-2.5 py-1.5">
           <SourceControlIcon className="size-3.5 shrink-0 text-muted-foreground" />
           <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-foreground">{detail.thread.title}</span>
         </div>

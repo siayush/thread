@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { Command, CommandResult } from '@shared/commands'
 import type { ModelOption, ShellSnapshot, ThreadDetail } from '@shared/domain'
+import type { ReadFileResult } from '@shared/rpc'
 import type { DiffAction, DiffResult, DiffScope, DiffSummary } from '@shared/diff'
 import { rpc } from '../rpc/client'
 import { reduceThread } from './threadReducer'
@@ -19,6 +20,7 @@ interface ServerState {
   getDiff: (threadId: string, scope: DiffScope) => Promise<DiffResult>
   getDiffSummary: (threadId: string) => Promise<DiffSummary>
   fileAction: (threadId: string, action: DiffAction, paths: string[]) => Promise<{ ok: boolean; error?: string }>
+  readProjectFile: (threadId: string, path: string) => Promise<ReadFileResult>
 }
 
 const emptyShell: ShellSnapshot = { projects: [], threads: [] }
@@ -83,5 +85,6 @@ export const useServer = create<ServerState>((set, get) => ({
   },
   getDiff: (threadId, scope) => rpc.request<DiffResult>('getDiff', { threadId, scope }),
   getDiffSummary: (threadId) => rpc.request<DiffSummary>('getDiffSummary', { threadId }),
-  fileAction: (threadId, action, paths) => rpc.request<{ ok: boolean; error?: string }>('fileAction', { threadId, action, paths })
+  fileAction: (threadId, action, paths) => rpc.request<{ ok: boolean; error?: string }>('fileAction', { threadId, action, paths }),
+  readProjectFile: (threadId, path) => rpc.request<ReadFileResult>('readProjectFile', { threadId, path })
 }))

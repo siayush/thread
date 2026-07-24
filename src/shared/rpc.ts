@@ -22,7 +22,17 @@ export type RpcRequest =
   | { method: 'getDiff'; params: { threadId: string; scope: DiffScope } }
   | { method: 'getDiffSummary'; params: { threadId: string } }
   | { method: 'fileAction'; params: { threadId: string; action: DiffAction; paths: string[] } }
+  | { method: 'readProjectFile'; params: { threadId: string; path: string } }
   | { method: 'listModels'; params: Record<string, never> }
+
+/** result of `readProjectFile`: a project file's text for the in-app viewer */
+export interface ReadFileResult {
+  ok: boolean
+  /** project-relative path actually read (echoes the request path on failure) */
+  path: string
+  content?: string
+  error?: string
+}
 
 export type RpcRequestMethod = RpcRequest['method']
 export type RpcSubscribeMethod = 'subscribeShell' | 'subscribeThread'

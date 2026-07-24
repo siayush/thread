@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto'
-import { basename } from 'node:path'
+import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { readFileSync, statSync } from 'node:fs'
 import type { Command, CommandResult } from '@shared/commands'
 import type { NewEvent, OrchestrationEvent } from '@shared/events'
-import type { StreamMessage } from '@shared/rpc'
+import type { ReadFileResult, StreamMessage } from '@shared/rpc'
 import { RUNTIME_MODE_TO_PERMISSION, type ApprovalDecision, type ApprovalKind, type InteractionMode, type RuntimeMode } from '@shared/domain'
 import type { DiffAction, DiffResult, DiffScope, DiffSummary } from '@shared/diff'
 import { Db } from './db'
@@ -452,5 +453,25 @@ export class Engine implements AgentHost {
     const info = getThreadProjectPath(this.db, threadId)
     if (!info) return { ok: false, error: 'Thread not found' }
     return applyFileAction(info.project.folderPath, action, paths)
+  }
+
+  /** Read a text file for the in-app viewer; the path must stay inside the project folder. */
+  async readProjectFile(threadId: string, filePath: string): Promise<ReadFileResult> {
+    const info = getThreadProjectPath(this.db, threadId)
+    if (!info) return { ok: false, path: filePath, error: 'Thread not found' }
+    const root = resolve(info.project.folderPath)
+    const abs = resolve(isAbsolute(filePath) ? filePath : join(root, filePath))
+    if (abs !== root && !abs.startsWith(root + sep)) return { ok: false, path: filePath, error: 'File is outside the project folder' }
+    try {
+      const stat = statSync(abs)
+      if (!stat.isFile()) return { ok: false, path: filePath, error: 'Not a file' }
+      if (stat.size > 2_000_000) return { ok: false, path: filePath, error: 'File is too large to preview' }
+      const buf = readFileSync(abs)
+      if (buf.includes(0)) return { ok: false, path: filePath, error: 'Cannot preview a binary file' }
+      return { ok: true, path: relative(root, abs), content: buf.toString('utf8') }
+    } catch (err) {
+      const notFound = (err as NodeJS.ErrnoException)?.code === 'ENOENT'
+      return { ok: false, path: filePath, error: notFound ? 'File not found' : err instanceof Error ? err.message : String(err) }
+    }
   }
 }
