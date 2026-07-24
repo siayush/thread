@@ -6,6 +6,17 @@ import type { DiffScope } from '@shared/diff'
 export type ThreadView = 'chat' | 'diff' | 'file'
 export type DiffView = 'inline' | 'split'
 
+/** Selectable color themes. Both are dark; they differ only in how black the background is. */
+export type ThemeId = 'layered-black' | 'classic-dark'
+
+export const THEMES: { id: ThemeId; label: string }[] = [
+  { id: 'layered-black', label: 'Classic black' },
+  { id: 'classic-dark', label: 'Dark grey' }
+]
+
+export const DEFAULT_THEME: ThemeId = 'classic-dark'
+export const DEFAULT_DIFF_VIEW: DiffView = 'inline'
+
 /** a file reference the chat linked to (path relative to the project, optional line) */
 export interface FileTarget {
   path: string
@@ -24,6 +35,8 @@ interface UiState {
   /** which file the file view shows; only meaningful while threadView === 'file' */
   fileTarget: FileTarget | null
   commandPaletteOpen: boolean
+  settingsOpen: boolean
+  theme: ThemeId
 
   /** open a thread in the main view (single active thread) */
   openTab: (threadId: string) => void
@@ -41,6 +54,8 @@ interface UiState {
   setDiffScope: (scope: DiffScope) => void
   setDiffView: (view: DiffView) => void
   setCommandPaletteOpen: (open: boolean) => void
+  setSettingsOpen: (open: boolean) => void
+  setTheme: (theme: ThemeId) => void
 }
 
 export const useUi = create<UiState>()(
@@ -52,9 +67,11 @@ export const useUi = create<UiState>()(
       threadView: 'chat',
       diffSelectedFile: null,
       diffScope: { kind: 'working' },
-      diffView: 'inline',
+      diffView: DEFAULT_DIFF_VIEW,
       fileTarget: null,
       commandPaletteOpen: false,
+      settingsOpen: false,
+      theme: DEFAULT_THEME,
 
       openTab: (threadId) => set({ activeThreadId: threadId, threadView: 'chat' }),
 
@@ -73,7 +90,9 @@ export const useUi = create<UiState>()(
       setDiffSelectedFile: (path) => set({ diffSelectedFile: path }),
       setDiffScope: (scope) => set({ diffScope: scope, diffSelectedFile: null }),
       setDiffView: (view) => set({ diffView: view }),
-      setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open })
+      setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
+      setSettingsOpen: (open) => set({ settingsOpen: open }),
+      setTheme: (theme) => set({ theme })
     }),
     {
       name: 'thread:ui',
@@ -82,7 +101,8 @@ export const useUi = create<UiState>()(
         sidebarCollapsed: s.sidebarCollapsed,
         expandedProjects: s.expandedProjects,
         diffScope: s.diffScope,
-        diffView: s.diffView
+        diffView: s.diffView,
+        theme: s.theme
       })
     }
   )

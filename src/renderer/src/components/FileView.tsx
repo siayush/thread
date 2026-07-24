@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, FileCode2, TriangleAlert } from 'lucide-react'
 import type { CodeViewFileItem } from '@pierre/diffs'
 import { CodeView, type CodeViewHandle } from '@pierre/diffs/react'
-import { fnv1a } from './CodeWorkerPool'
+import { fnv1a } from '../lib/hash'
 import { useServer } from '../state/serverStore'
 import { useUi } from '../state/uiStore'
 import { SidebarToggle } from './Sidebar'
@@ -123,7 +123,7 @@ export function FileView({ threadId }: { threadId: string }): JSX.Element {
           </div>
         ) : loaded.error ? (
           <div className="mx-auto mt-10 flex w-fit items-center gap-2 rounded-[10px] border border-amber/35 bg-amber/8 px-3.5 py-2.5 text-xs text-amber">
-            <TriangleAlert size={13} /> {loaded.error}
+            <TriangleAlert className="size-[13px] shrink-0" /> {loaded.error}
           </div>
         ) : item ? (
           /* CodeView's root element is its own scroll container (it attaches
