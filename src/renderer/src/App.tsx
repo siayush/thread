@@ -4,6 +4,8 @@ import { useUi } from './state/uiStore'
 import { Sidebar, SidebarToggle } from './components/Sidebar'
 import { ChatView } from './components/ChatView'
 import { CommandPalette } from './components/CommandPalette'
+import { ConfirmDialog } from './components/ConfirmDialog'
+import { SettingsPage } from './components/SettingsPage'
 import { CodeWorkerPool } from './components/CodeWorkerPool'
 import { cn } from '@/lib/utils'
 import { Sparkles } from 'lucide-react'
@@ -16,10 +18,16 @@ export default function App(): JSX.Element {
   const setActive = useUi((s) => s.setActive)
   const setCommandPaletteOpen = useUi((s) => s.setCommandPaletteOpen)
   const sidebarCollapsed = useUi((s) => s.sidebarCollapsed)
+  const theme = useUi((s) => s.theme)
 
   useEffect(() => {
     init()
   }, [init])
+
+  // reflect the chosen theme onto <html> so the CSS [data-theme] override applies
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+  }, [theme])
 
   // re-open the last active thread on launch — unless it no longer exists
   useEffect(() => {
@@ -50,7 +58,7 @@ export default function App(): JSX.Element {
   if (!ready) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
-        <Sparkles size={22} className="text-primary" />
+        <Sparkles className="size-[22px] text-primary" />
         <span>Loading…</span>
       </div>
     )
@@ -86,6 +94,8 @@ export default function App(): JSX.Element {
           )}
         </main>
         <CommandPalette />
+        <ConfirmDialog />
+        <SettingsPage />
       </div>
     </CodeWorkerPool>
   )

@@ -4,9 +4,10 @@ import { isProjectExpanded, useUi } from '../state/uiStore'
 import { useDiffSummary } from '../state/diffStore'
 import { FileChangesView } from './FileChangesView'
 import type { Project, ThreadSummary } from '@shared/domain'
-import { ChevronDown, ChevronRight, Ellipsis, Folder, SquarePen, Plus, Search, FolderPlus, PanelLeft } from 'lucide-react'
+import { ChevronDown, ChevronRight, Ellipsis, Folder, SquarePen, Plus, Search, FolderPlus, PanelLeft, Settings } from 'lucide-react'
 import { SourceControlIcon } from '@/components/ui/source-control-icon'
 import { relativeTime } from '../lib/format'
+import { confirmDialog } from './ConfirmDialog'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -64,7 +65,10 @@ function RenameInput({ initial, onCommit, onCancel }: { initial: string; onCommi
 }
 
 function ProjectRow({ project }: { project: Project }): JSX.Element {
-  const threads = useServer((s) => s.shell.threads.filter((t) => t.projectId === project.id))
+  // select the stable array and filter in render — a filtering selector would
+  // return a fresh array every snapshot and re-render on every store update
+  const allThreads = useServer((s) => s.shell.threads)
+  const threads = allThreads.filter((t) => t.projectId === project.id)
   // threads awaiting an approval are listed in the "Needs you" section instead; they return here once answered
   const visibleThreads = threads.filter((t) => !t.hasPendingApproval)
   const activeThreadId = useUi((s) => s.activeThreadId)
@@ -110,7 +114,13 @@ function ProjectRow({ project }: { project: Project }): JSX.Element {
     } else if (picked === 'copy') {
       void navigator.clipboard.writeText(project.folderPath)
     } else if (picked === 'remove') {
-      if (window.confirm(`Remove "${project.name}"? Its threads will be hidden.`)) void dispatch({ type: 'project.remove', projectId: project.id })
+      const ok = await confirmDialog({
+        title: `Remove "${project.name}"?`,
+        description: 'Its threads will be hidden.',
+        confirmLabel: 'Remove',
+        destructive: true
+      })
+      if (ok) void dispatch({ type: 'project.remove', projectId: project.id })
     }
   }
 
@@ -128,7 +138,8 @@ function ProjectRow({ project }: { project: Project }): JSX.Element {
     if (picked === 'rename') {
       setRenamingThreadId(t.id)
     } else if (picked === 'delete') {
-      if (window.confirm('Delete this thread?')) void dispatch({ type: 'thread.delete', threadId: t.id })
+      const ok = await confirmDialog({ title: 'Delete this thread?', confirmLabel: 'Delete', destructive: true })
+      if (ok) void dispatch({ type: 'thread.delete', threadId: t.id })
     }
   }
 
@@ -149,7 +160,7 @@ function ProjectRow({ project }: { project: Project }): JSX.Element {
         </Button>
         {renamingProject ? (
           <span className="flex min-w-0 flex-1 items-center gap-[7px] px-0.5 py-[3px]">
-            <Folder size={13} className="shrink-0 text-muted-foreground" />
+            <Folder className="size-[13px] shrink-0 text-muted-foreground" />
             <RenameInput
               initial={project.name}
               onCommit={(name) => {
@@ -290,7 +301,8 @@ function ProjectRow({ project }: { project: Project }): JSX.Element {
  * project tree. Answering the approval drops the thread back into its project.
  */
 function NeedsYouSection(): JSX.Element | null {
-  const pending = useServer((s) => s.shell.threads.filter((t) => t.hasPendingApproval))
+  const threads = useServer((s) => s.shell.threads)
+  const pending = threads.filter((t) => t.hasPendingApproval)
   const projects = useServer((s) => s.shell.projects)
   const dispatch = useServer((s) => s.dispatch)
   const openTab = useUi((s) => s.openTab)
@@ -349,6 +361,7 @@ export function Sidebar(): JSX.Element {
   const dispatch = useServer((s) => s.dispatch)
   const openTab = useUi((s) => s.openTab)
   const setCommandPaletteOpen = useUi((s) => s.setCommandPaletteOpen)
+  const setSettingsOpen = useUi((s) => s.setSettingsOpen)
   const threadView = useUi((s) => s.threadView)
   const activeThreadId = useUi((s) => s.activeThreadId)
   const collapsed = useUi((s) => s.sidebarCollapsed)
@@ -433,6 +446,17 @@ export function Sidebar(): JSX.Element {
           </div>
         </div>
       )}
+
+      <div className="mt-auto border-t p-2">
+        <Button
+          variant="ghost"
+          className="h-auto w-full justify-start gap-2 px-2 py-1.5 text-[13px] font-normal text-muted-foreground"
+          onClick={() => setSettingsOpen(true)}
+        >
+          <Settings className="size-[15px]" />
+          <span className="flex-1 text-left">Settings</span>
+        </Button>
+      </div>
       </aside>
     </>
   )

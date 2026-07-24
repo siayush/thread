@@ -7,6 +7,7 @@ import { Minus, Plus, Undo2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { SourceControlIcon } from '@/components/ui/source-control-icon'
+import { alertDialog, confirmDialog } from './ConfirmDialog'
 
 const STATUS_LETTER: Record<DiffFile['status'], string> = { added: 'A', modified: 'M', deleted: 'D', renamed: 'R' }
 const STATUS_COLOR: Record<DiffFile['status'], string> = {
@@ -39,11 +40,20 @@ function FileRow({
   const dir = dirOf(file.path)
   return (
     <div
+      role="button"
+      tabIndex={0}
       className={cn(
-        'group/file flex h-[27px] cursor-pointer items-center gap-2 rounded-md px-2 hover:bg-muted',
+        'group/file flex h-[27px] cursor-pointer items-center gap-2 rounded-md px-2 outline-none hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50',
         active && 'bg-primary/10 hover:bg-primary/10'
       )}
       onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onSelect()
+        }
+      }}
       title={file.path}
     >
       <span className={cn('min-w-0 shrink truncate text-[12.5px]', active ? 'text-foreground' : 'text-foreground/85')}>{nameOf(file.path)}</span>
@@ -177,10 +187,16 @@ export function FileChangesView(): JSX.Element {
     if (!activeThreadId || paths.length === 0) return
     if (action === 'discard') {
       const what = paths.length === 1 ? `changes to ${nameOf(paths[0])}` : `changes in ${paths.length} files`
-      if (!window.confirm(`Discard ${what}? This cannot be undone.`)) return
+      const ok = await confirmDialog({
+        title: `Discard ${what}?`,
+        description: 'This cannot be undone.',
+        confirmLabel: 'Discard',
+        destructive: true
+      })
+      if (!ok) return
     }
     const res = await fileAction(activeThreadId, action, paths)
-    if (!res.ok && res.error) window.alert(res.error)
+    if (!res.ok && res.error) void alertDialog('Action failed', res.error)
     reload()
     if (projectId) refreshSummary(activeThreadId, projectId, true)
   }

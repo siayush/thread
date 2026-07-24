@@ -158,7 +158,7 @@ export function ModelPicker({ thread }: { thread: Thread }): JSX.Element {
                     <span className="min-w-0 flex-1 truncate text-left text-xs leading-snug font-medium">
                       {name}
                     </span>
-                    {isSelected(m.value) && <Check className="size-3.5 shrink-0 text-blue-400" />}
+                    {isSelected(m.value) && <Check className="size-3.5 shrink-0 text-primary" />}
                   </CommandItem>
                 )
               })}

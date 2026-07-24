@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { parsePatchFiles, type CodeViewDiffItem, type CodeViewItem } from '@pierre/diffs'
 import { CodeView, type CodeViewHandle } from '@pierre/diffs/react'
-import { fnv1a } from './CodeWorkerPool'
+import { fnv1a } from '../lib/hash'
 import { useUi } from '../state/uiStore'
 import { SidebarToggle } from './Sidebar'
 import { useDiffData } from '../state/diffStore'
@@ -134,8 +134,10 @@ function DiffStatSquares({ additions, deletions }: FileStat): JSX.Element | null
 function CopyPathButton({ path }: { path: string }): JSX.Element {
   const [copied, setCopied] = useState(false)
   return (
-    <button
-      className="flex size-5 flex-none items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+    <Button
+      variant="ghost"
+      size="icon-xs"
+      className="size-5 flex-none text-muted-foreground hover:text-foreground"
       title="Copy file path"
       onClick={(e) => {
         e.stopPropagation()
@@ -145,7 +147,7 @@ function CopyPathButton({ path }: { path: string }): JSX.Element {
       }}
     >
       {copied ? <Check className="size-3 text-emerald" /> : <Copy className="size-3" />}
-    </button>
+    </Button>
   )
 }
 
@@ -206,8 +208,17 @@ function PierreDiff({
       const stat = stats[name]
       return (
         <div
-          className="flex h-full w-full cursor-pointer items-center gap-1.5 pr-3 pl-1.5 select-none"
+          role="button"
+          tabIndex={0}
+          className="flex h-full w-full cursor-pointer items-center gap-1.5 pr-3 pl-1.5 outline-none select-none focus-visible:ring-3 focus-visible:ring-ring/50"
           onClick={() => setCollapsed((prev) => ({ ...prev, [name]: !prev[name] }))}
+          onKeyDown={(e) => {
+            if (e.target !== e.currentTarget) return
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              setCollapsed((prev) => ({ ...prev, [name]: !prev[name] }))
+            }
+          }}
         >
           <span className="flex size-5 flex-none items-center justify-center rounded text-muted-foreground">
             <ChevronDown className={cn('size-3.5 transition-transform duration-150', isCollapsed && '-rotate-90')} />

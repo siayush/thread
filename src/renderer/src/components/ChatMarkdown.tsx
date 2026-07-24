@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { Check, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { useUi, type FileTarget } from '../state/uiStore'
 
 /** Parse a chat file reference — `src/foo.ts`, `foo.ts:42`, `src/foo.ts#L42` —
@@ -96,7 +97,7 @@ function renderBlocks(src: string): ReactNode[] {
       }
       const ListTag = ordered ? 'ol' : 'ul'
       out.push(
-        <ListTag key={key++} className={`mb-2.5 pl-5 ${ordered ? 'list-decimal' : 'list-disc'}`}>
+        <ListTag key={key++} className={cn('mb-2.5 pl-5', ordered ? 'list-decimal' : 'list-disc')}>
           {items.map((it, idx) => (
             <li key={idx} className="my-[3px]">
               {renderInline(it)}
@@ -180,9 +181,17 @@ function renderInline(text: string): ReactNode[] {
         fileRef ? (
           <code
             key={key++}
-            className="cursor-pointer rounded-[5px] border bg-muted px-[5px] py-px font-mono text-[0.85em] hover:border-sky/50 hover:text-sky"
+            role="button"
+            tabIndex={0}
+            className="cursor-pointer rounded-[5px] border bg-muted px-[5px] py-px font-mono text-[0.85em] outline-none hover:border-sky/50 hover:text-sky focus-visible:ring-3 focus-visible:ring-ring/50"
             title={`Open ${fileRef.path}${fileRef.line != null ? ` at line ${fileRef.line}` : ''}`}
             onClick={() => openFileRef(fileRef)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                openFileRef(fileRef)
+              }
+            }}
           >
             {inner}
           </code>

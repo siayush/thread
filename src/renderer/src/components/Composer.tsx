@@ -49,7 +49,7 @@ function ApprovalPanel({ threadId, approval }: { threadId: string; approval: Pen
   return (
     <div className="m-1 mb-2 rounded-xl border border-amber/35 bg-amber/8 px-3 py-2.5">
       <div className="flex items-center gap-[7px] text-xs text-amber">
-        <TriangleAlert size={13} /> Permission required — <b>{approval.toolName}</b>
+        <TriangleAlert className="size-[13px] shrink-0" /> Permission required — <b>{approval.toolName}</b>
       </div>
       {approval.detail && (
         <div className="my-1.5 mb-2.5 max-h-[120px] overflow-auto font-mono text-[11.5px] break-words whitespace-pre-wrap text-foreground/80">
@@ -135,7 +135,7 @@ export function Composer({ thread }: { thread: Thread }): JSX.Element {
     <div className="mx-auto w-full max-w-3xl px-5 pt-2 pb-[18px]">
       {(sendError ?? thread.lastError) && (
         <div className="mb-2 flex items-center gap-2 rounded-[10px] border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-          <TriangleAlert size={13} /> {sendError ?? thread.lastError}
+          <TriangleAlert className="size-[13px] shrink-0" /> {sendError ?? thread.lastError}
         </div>
       )}
       <div className="rounded-[18px] border border-input bg-card/70 p-1.5 shadow-[0_18px_48px_-24px_rgba(0,0,0,0.6)] backdrop-blur-xl focus-within:border-primary/45">
@@ -222,7 +222,7 @@ export function Composer({ thread }: { thread: Thread }): JSX.Element {
           {running ? (
             <Button
               size="icon"
-              className="size-[34px] shrink-0 rounded-[10px] bg-destructive text-white hover:bg-destructive/80"
+              className="size-[34px] shrink-0 rounded-[10px] bg-destructive text-destructive-foreground hover:bg-destructive/80"
               onClick={() => void dispatch({ type: 'turn.interrupt', threadId: thread.id })}
               title="Stop"
             >

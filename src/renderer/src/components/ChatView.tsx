@@ -7,6 +7,7 @@ import { DiffPanel } from './DiffPanel'
 import { FileView } from './FileView'
 import { SourceControlIcon } from '@/components/ui/source-control-icon'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { SidebarToggle } from './Sidebar'
 import { useDiffSummary } from '../state/diffStore'
@@ -78,8 +79,9 @@ export function ChatView({ threadId }: { threadId: string }): JSX.Element {
             <Badge className="h-auto rounded-md border-none bg-amber/12 px-2 py-0.5 text-[10.5px] font-normal text-amber">not a git repo</Badge>
           )}
           {changeCount > 0 && (
-            <button
-              className="flex items-center gap-1.5 rounded-md border border-border bg-muted px-2 py-1 text-[11.5px] text-muted-foreground hover:border-primary/45 hover:bg-primary/10 hover:text-foreground"
+            <Button
+              variant="ghost"
+              className="h-auto gap-1.5 rounded-md border border-border bg-muted px-2 py-1 text-[11.5px] font-normal text-muted-foreground hover:border-primary/45 hover:bg-primary/10 hover:text-foreground dark:hover:bg-primary/10"
               title="View file changes"
               onClick={() => openDiff(threadId, { kind: 'working' })}
             >
@@ -92,7 +94,7 @@ export function ChatView({ threadId }: { threadId: string }): JSX.Element {
                   <span className="text-destructive tabular-nums">−{summary.deletions}</span>
                 </>
               )}
-            </button>
+            </Button>
           )}
         </div>
       </header>
