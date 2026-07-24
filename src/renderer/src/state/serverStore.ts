@@ -58,7 +58,8 @@ export const useServer = create<ServerState>((set, get) => ({
           const detail = s.details[threadId]
           if (!detail) return s
           let next = detail
-          for (const e of msg.events) next = reduceThread(next, e)
+          // streamId guard: never fold another thread's events into this detail
+          for (const e of msg.events) if (e.streamId === threadId) next = reduceThread(next, e)
           return { details: { ...s.details, [threadId]: next } }
         })
       }

@@ -1,12 +1,15 @@
 import { dirname } from 'node:path'
 import { existsSync, mkdirSync, renameSync } from 'node:fs'
-import { DatabaseSync, type SQLInputValue } from 'node:sqlite'
+import { DatabaseSync, type SQLInputValue, type StatementSync } from 'node:sqlite'
 
 /**
  * A thin synchronous SQLite wrapper over the Node built-in `node:sqlite`.
  * Real on-disk SQLite — every statement/transaction is durable as written.
  */
 export class Db {
+  /** the app runs a fixed, small set of SQL strings — cache their prepared statements */
+  private readonly stmts = new Map<string, StatementSync>()
+
   private constructor(private readonly db: DatabaseSync) {}
 
   static open(filePath: string): Db {
@@ -41,6 +44,12 @@ export class Db {
   }
 
   private migrate(): void {
+    // WAL: commits become sequential appends (no per-txn journal create/fsync/delete),
+    // so the frequent event appends during streaming don't stall the main process.
+    // NORMAL still fsyncs at checkpoints; worst case on power loss is the last few
+    // events, which recoverFromRestart already heals.
+    this.db.exec('PRAGMA journal_mode = WAL')
+    this.db.exec('PRAGMA synchronous = NORMAL')
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS meta (
         key TEXT PRIMARY KEY, value TEXT
@@ -54,6 +63,8 @@ export class Db {
         payload TEXT NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_events_stream ON events (stream_id, seq);
+      -- delta compaction deletes by type; keeps that scan off the full log
+      CREATE INDEX IF NOT EXISTS idx_events_type ON events (type);
 
       CREATE TABLE IF NOT EXISTS projects (
         id TEXT PRIMARY KEY, name TEXT, folder_path TEXT, is_git_repo INTEGER,
@@ -111,8 +122,18 @@ export class Db {
     }
   }
 
+  /** Prepare-once cache: the hot append path reuses the same few statements. */
+  private prep(sql: string): StatementSync {
+    let stmt = this.stmts.get(sql)
+    if (!stmt) {
+      stmt = this.db.prepare(sql)
+      this.stmts.set(sql, stmt)
+    }
+    return stmt
+  }
+
   run(sql: string, params: unknown[] = []): void {
-    this.db.prepare(sql).run(...(params as SQLInputValue[]))
+    this.prep(sql).run(...(params as SQLInputValue[]))
   }
 
   /** Run `fn` inside a transaction; rolls back and rethrows on failure. */
@@ -134,7 +155,7 @@ export class Db {
 
   /** Read rows as objects. */
   all<T = Record<string, unknown>>(sql: string, params: unknown[] = []): T[] {
-    return this.db.prepare(sql).all(...(params as SQLInputValue[])) as T[]
+    return this.prep(sql).all(...(params as SQLInputValue[])) as T[]
   }
 
   get<T = Record<string, unknown>>(sql: string, params: unknown[] = []): T | undefined {
@@ -151,9 +172,13 @@ export class Db {
 
   /** Insert an event and return its auto-assigned seq. */
   insertEvent(id: string, ts: number, streamId: string, type: string, payloadJson: string): number {
-    const { lastInsertRowid } = this.db
-      .prepare('INSERT INTO events (id, ts, stream_id, type, payload) VALUES (?,?,?,?,?)')
-      .run(id, ts, streamId, type, payloadJson)
+    const { lastInsertRowid } = this.prep('INSERT INTO events (id, ts, stream_id, type, payload) VALUES (?,?,?,?,?)').run(
+      id,
+      ts,
+      streamId,
+      type,
+      payloadJson
+    )
     return Number(lastInsertRowid)
   }
 

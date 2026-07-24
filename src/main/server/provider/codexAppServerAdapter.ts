@@ -123,7 +123,19 @@ export class CodexAppServerAdapter implements ProviderAdapter {
   async generateTitle(): Promise<string | null> {
     return null
   }
-  cancelTitle(): void {}
+  /** Kill the thread's app-server process. Sessions are created lazily, so a
+   *  later turn on the same thread just starts a fresh one. */
+  disposeThread(threadId: string): void {
+    const session = this.sessions.get(threadId)
+    if (!session) return
+    this.sessions.delete(threadId)
+    session.server.close()
+  }
+
+  dispose(): void {
+    for (const session of this.sessions.values()) session.server.close()
+    this.sessions.clear()
+  }
 
   async runTurn(params: RunTurnParams): Promise<TurnOutcome> {
     const { threadId, turnId, cwd, prompt, model, reasoningEffort, permissionMode, abort } = params

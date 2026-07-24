@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { memo, useState, type ReactNode } from 'react'
 import { Check, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -32,14 +32,16 @@ function openFileRef(target: FileTarget): void {
 
 /** A compact, dependency-free markdown renderer covering the constructs the
  * agent emits: fenced code, headings, lists, blockquotes, inline code, bold,
- * italic, links (system browser), and file references (in-app file viewer). */
-export function ChatMarkdown({ text }: { text: string }): JSX.Element {
+ * italic, links (system browser), and file references (in-app file viewer).
+ * Memoized: parsing is pure in `text`, and during streaming every other
+ * message's markdown must not re-tokenize per delta. */
+export const ChatMarkdown = memo(function ChatMarkdown({ text }: { text: string }): JSX.Element {
   return (
     <div className="text-[13px] leading-relaxed text-foreground/80 [&_strong]:font-semibold [&_strong]:text-foreground">
       {renderBlocks(text)}
     </div>
   )
-}
+})
 
 function renderBlocks(src: string): ReactNode[] {
   const lines = src.replace(/\r\n/g, '\n').split('\n')

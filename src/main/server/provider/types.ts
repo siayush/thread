@@ -82,7 +82,10 @@ export interface ProviderAdapter {
   runTurn(params: RunTurnParams): Promise<TurnOutcome>
   /** One-shot, tool-less generation of a concise thread title. `null` on any failure. */
   generateTitle(threadId: string, cwd: string, message: string): Promise<string | null>
-  /** Cancel an in-flight title job for a thread. */
-  cancelTitle(threadId: string): void
+  /** Release everything held for one thread (child processes, jobs). Called on
+   *  thread delete / project remove; the thread may get a fresh session later. */
+  disposeThread(threadId: string): void
+  /** Release everything the adapter holds (all sessions/jobs). Called at app quit. */
+  dispose(): void
 }
 

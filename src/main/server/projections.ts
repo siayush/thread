@@ -319,10 +319,18 @@ const toApproval = (r: any): PendingApproval => ({
 })
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
+/**
+ * The shell snapshot is re-queried and re-shipped to every subscriber on each
+ * (debounced) shell-relevant event, so it must stay bounded as the DB grows.
+ * 500 most-recently-active threads is far beyond what the sidebar/palette can
+ * usefully show; older threads stay in the DB and reappear on activity.
+ */
+const SHELL_THREAD_LIMIT = 500
+
 export function getShellSnapshot(db: Db): ShellSnapshot {
   const projects = db.all('SELECT * FROM projects WHERE removed=0 ORDER BY last_opened_at DESC').map(toProject)
   const threads: ThreadSummary[] = db
-    .all('SELECT * FROM threads WHERE deleted=0 ORDER BY latest_activity_at DESC')
+    .all('SELECT * FROM threads WHERE deleted=0 ORDER BY latest_activity_at DESC LIMIT ?', [SHELL_THREAD_LIMIT])
     .map(toThread)
     .map((t) => ({
       id: t.id,

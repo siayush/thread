@@ -26,11 +26,18 @@ function createWindow(): void {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      // the preload only uses contextBridge/ipcRenderer, both sandbox-safe —
+      // keep the renderer sandboxed since it displays agent-produced content
+      sandbox: true
     }
   })
 
   mainWindow.on('ready-to-show', () => mainWindow?.show())
+  // never leave the module-level ref pointing at a destroyed window (macOS keeps
+  // the app alive after close; a dialog against a destroyed window throws)
+  mainWindow.on('closed', () => {
+    mainWindow = null
+  })
 
   if (process.env.ELECTRON_RENDERER_URL) {
     mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
