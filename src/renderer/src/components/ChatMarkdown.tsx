@@ -1,10 +1,37 @@
 import { useState, type ReactNode } from 'react'
 import { Check, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useUi, type FileTarget } from '../state/uiStore'
+
+/** Parse a chat file reference — `src/foo.ts`, `foo.ts:42`, `src/foo.ts#L42` —
+ * into a path + line. Returns null for anything that doesn't look like a file. */
+function parseFileRef(raw: string): FileTarget | null {
+  let path = raw.trim()
+  let line: number | null = null
+  const hash = path.match(/^(.*?)#L(\d+)(?:-L?\d+)?$/)
+  const colon = path.match(/^(.*?):(\d+)(?:[:-]\d+)?$/)
+  if (hash) {
+    path = hash[1]
+    line = parseInt(hash[2], 10)
+  } else if (colon) {
+    path = colon[1]
+    line = parseInt(colon[2], 10)
+  }
+  path = path.replace(/^\.\//, '')
+  // segments of word chars/dots/dashes, ending in a letter-led extension — rejects prose, versions ("1.5"), URLs
+  if (!/^\/?(?:[\w.@-]+\/)*[\w.@-]+\.[A-Za-z]\w{0,9}$/.test(path)) return null
+  return { path, line }
+}
+
+/** Open a referenced file over the active thread (chat is always the active thread). */
+function openFileRef(target: FileTarget): void {
+  const ui = useUi.getState()
+  if (ui.activeThreadId) ui.openFile(ui.activeThreadId, target)
+}
 
 /** A compact, dependency-free markdown renderer covering the constructs the
  * agent emits: fenced code, headings, lists, blockquotes, inline code, bold,
- * italic, and links (opened in the system browser). */
+ * italic, links (system browser), and file references (in-app file viewer). */
 export function ChatMarkdown({ text }: { text: string }): JSX.Element {
   return (
     <div className="text-[13px] leading-relaxed text-foreground/80 [&_strong]:font-semibold [&_strong]:text-foreground">
@@ -146,26 +173,45 @@ function renderInline(text: string): ReactNode[] {
   while ((m = regex.exec(text)) !== null) {
     if (m.index > last) nodes.push(text.slice(last, m.index))
     const tok = m[0]
-    if (tok.startsWith('`'))
+    if (tok.startsWith('`')) {
+      const inner = tok.slice(1, -1)
+      const fileRef = parseFileRef(inner)
       nodes.push(
-        <code key={key++} className="rounded-[5px] border bg-muted px-[5px] py-px font-mono text-[0.85em]">
-          {tok.slice(1, -1)}
-        </code>
+        fileRef ? (
+          <code
+            key={key++}
+            className="cursor-pointer rounded-[5px] border bg-muted px-[5px] py-px font-mono text-[0.85em] hover:border-sky/50 hover:text-sky"
+            title={`Open ${fileRef.path}${fileRef.line != null ? ` at line ${fileRef.line}` : ''}`}
+            onClick={() => openFileRef(fileRef)}
+          >
+            {inner}
+          </code>
+        ) : (
+          <code key={key++} className="rounded-[5px] border bg-muted px-[5px] py-px font-mono text-[0.85em]">
+            {inner}
+          </code>
+        )
       )
+    }
     else if (tok.startsWith('**')) nodes.push(<strong key={key++}>{tok.slice(2, -2)}</strong>)
     else if (tok.startsWith('*')) nodes.push(<em key={key++}>{tok.slice(1, -1)}</em>)
     else {
       const linkMatch = tok.match(/^\[([^\]]+)\]\(([^)]+)\)$/)
       if (linkMatch) {
         const [, label, url] = linkMatch
+        // no scheme → a file reference into the project; try the label too, it often carries the :line
+        const external = /^[a-z][a-z0-9+.-]*:/i.test(url)
+        const fileRef = external ? null : (parseFileRef(url) ?? parseFileRef(label))
         nodes.push(
           <a
             key={key++}
             className="border-b border-dotted border-sky/50 text-sky no-underline hover:border-solid"
             href={url}
+            title={fileRef ? `Open ${fileRef.path}${fileRef.line != null ? ` at line ${fileRef.line}` : ''}` : url}
             onClick={(e) => {
               e.preventDefault()
-              void window.native.openExternal(url)
+              if (fileRef) openFileRef(fileRef)
+              else void window.native.openExternal(url)
             }}
           >
             {label}

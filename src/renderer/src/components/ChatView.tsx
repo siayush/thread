@@ -4,6 +4,7 @@ import { useUi } from '../state/uiStore'
 import { MessagesTimeline } from './MessagesTimeline'
 import { Composer } from './Composer'
 import { DiffPanel } from './DiffPanel'
+import { FileView } from './FileView'
 import { SourceControlIcon } from '@/components/ui/source-control-icon'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
@@ -45,6 +46,15 @@ export function ChatView({ threadId }: { threadId: string }): JSX.Element {
 
   const openTurnDiff = (turnId: string): void => {
     openDiff(threadId, { kind: 'turn', turnId })
+  }
+
+  // a chat file reference fills the main area with a read-only viewer; its header carries the back button
+  if (threadView === 'file') {
+    return (
+      <div key="file" className="flex min-h-0 flex-1 flex-col duration-200 ease-out animate-in fade-in slide-in-from-right-4">
+        <FileView threadId={threadId} />
+      </div>
+    )
   }
 
   // the diff view fills the main area; the sidebar (FileChangesView) carries the file list + back button
