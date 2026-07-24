@@ -68,7 +68,7 @@ export default function App(): JSX.Element {
             <ChatView key={activeThreadId} threadId={activeThreadId} />
           ) : (
             <div className="flex min-h-0 flex-1 flex-col bg-background">
-              <header className={cn('drag-region flex h-13 items-center gap-1.5 border-b pr-5', sidebarCollapsed ? 'pl-19' : 'pl-5')}>
+              <header className={cn('drag-region flex h-13 items-center gap-1.5 border-b pr-5 transition-[padding] duration-150 ease-out', sidebarCollapsed ? 'pl-19' : 'pl-5')}>
                 {sidebarCollapsed && <SidebarToggle />}
                 <span className="text-xs text-muted-foreground/50">No active thread</span>
               </header>

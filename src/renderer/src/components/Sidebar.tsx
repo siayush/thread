@@ -374,13 +374,15 @@ export function Sidebar(): JSX.Element {
       {/* in-flow spacer: animates its width so the layout follows the panel's slide */}
       <div
         aria-hidden
-        className={cn('shrink-0 transition-[width] duration-200 ease-linear', collapsed ? 'w-0' : 'w-66')}
+        className={cn('shrink-0 transition-[width] duration-150 ease-out', collapsed ? 'w-0' : 'w-66')}
       />
-      {/* fixed full-width panel slides off-canvas when collapsed — full width so its content doesn't reflow mid-slide */}
+      {/* fixed full-width panel slides off-canvas when collapsed — full width so its
+          content doesn't reflow mid-slide; translate (not left) keeps the slide on
+          the compositor instead of relayouting the sidebar tree every frame */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-10 flex w-66 flex-col overflow-hidden border-r bg-card transition-[left] duration-200 ease-linear',
-          collapsed && '-left-66'
+          'fixed inset-y-0 left-0 z-10 flex w-66 flex-col overflow-hidden border-r bg-card transition-transform duration-150 ease-out will-change-transform',
+          collapsed && '-translate-x-full'
         )}
       >
       <div className="drag-region flex h-13 items-center gap-1 pr-2 pl-19">

@@ -68,7 +68,7 @@ export function ChatView({ threadId }: { threadId: string }): JSX.Element {
 
   return (
     <div key="chat" className="flex min-h-0 flex-1 flex-col duration-200 ease-out animate-in fade-in slide-in-from-left-4">
-      <header className={cn('drag-region flex h-13 items-center justify-between border-b pr-3.5', sidebarCollapsed ? 'pl-19' : 'pl-5')}>
+      <header className={cn('drag-region flex h-13 items-center justify-between border-b pr-3.5 transition-[padding] duration-150 ease-out', sidebarCollapsed ? 'pl-19' : 'pl-5')}>
         <div className="no-drag flex min-w-0 items-center gap-2.5">
           {sidebarCollapsed && <SidebarToggle />}
           <span className="text-[13.5px] font-semibold whitespace-nowrap">{thread.title}</span>
