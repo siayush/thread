@@ -12,6 +12,7 @@ import {
   Zap,
   X,
   Check,
+  Copy,
   ChevronDown,
   ChevronRight,
   FileDiff,
@@ -183,6 +184,63 @@ const ReasoningBlock = memo(function ReasoningBlock({ message }: { message: Mess
   )
 })
 
+/** Collapsed height for long user messages; anything taller folds behind "Show full message". */
+const USER_MESSAGE_COLLAPSED_MAX_PX = 260
+
+function UserMessageBubble({ text }: { text: string }): JSX.Element {
+  const [expanded, setExpanded] = useState(false)
+  const [overflowing, setOverflowing] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const contentRef = useRef<HTMLDivElement | null>(null)
+
+  useLayoutEffect(() => {
+    // scrollHeight reports full content height even while clamped
+    const el = contentRef.current
+    if (el) setOverflowing(el.scrollHeight > USER_MESSAGE_COLLAPSED_MAX_PX + 1)
+  }, [text])
+
+  const copy = (): void => {
+    void navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1200)
+  }
+
+  const collapsed = overflowing && !expanded
+
+  return (
+    <div className="group relative max-w-[82%] self-end rounded-2xl border bg-foreground/5 text-[13px] leading-normal">
+      <Button
+        variant="ghost"
+        size="xs"
+        className="absolute top-1.5 right-1.5 h-auto rounded-[7px] border bg-popover px-1.5 py-1 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-foreground"
+        title={copied ? 'Copied' : 'Copy message'}
+        onClick={copy}
+      >
+        {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+      </Button>
+      <div
+        ref={contentRef}
+        className={cn('break-words px-3.5 py-2.5', collapsed && 'overflow-hidden')}
+        style={collapsed ? { maxHeight: USER_MESSAGE_COLLAPSED_MAX_PX } : undefined}
+      >
+        <ChatMarkdown text={text} lineBreaks />
+      </div>
+      {overflowing && (
+        <div className="flex justify-end px-2 pb-1.5">
+          <Button
+            variant="ghost"
+            size="xs"
+            className="h-auto px-1.5 py-0.5 text-[11.5px] font-normal text-muted-foreground hover:bg-transparent hover:text-foreground dark:hover:bg-transparent"
+            onClick={() => setExpanded((prev) => !prev)}
+          >
+            {expanded ? 'Show less' : 'Show full message'}
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function TurnBlock({ group, onOpenDiff }: { group: TurnGroup; onOpenDiff: (turnId: string) => void }): JSX.Element {
   const works = group.entries.filter((e): e is Extract<Entry, { kind: 'work' }> => e.kind === 'work')
   const [userExpanded, setUserExpanded] = useState<boolean | null>(null)
@@ -192,11 +250,7 @@ function TurnBlock({ group, onOpenDiff }: { group: TurnGroup; onOpenDiff: (turnI
 
   return (
     <div className="flex flex-col gap-2.5">
-      {group.userMessage && (
-        <div className="max-w-[82%] self-end rounded-2xl border bg-foreground/5 px-3.5 py-2.5 text-[13px] leading-normal">
-          <div className="break-words whitespace-pre-wrap">{group.userMessage.text}</div>
-        </div>
-      )}
+      {group.userMessage && <UserMessageBubble text={group.userMessage.text} />}
 
       {showFold && (
         <Button
