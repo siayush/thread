@@ -100,7 +100,7 @@ export function FileView({ threadId }: { threadId: string }): JSX.Element {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className={cn('drag-region flex h-13 shrink-0 items-center gap-2.5 border-b pr-3.5', sidebarCollapsed ? 'pl-19' : 'pl-3.5')}>
+      <header className={cn('drag-region flex h-13 shrink-0 items-center gap-2.5 border-b pr-3.5 transition-[padding] duration-150 ease-out', sidebarCollapsed ? 'pl-19' : 'pl-3.5')}>
         {sidebarCollapsed && <SidebarToggle />}
         <Button variant="ghost" size="sm" className="no-drag gap-1.5 text-muted-foreground hover:text-foreground" onClick={back}>
           <ArrowLeft className="size-[14px]" /> Back

@@ -304,7 +304,7 @@ export function DiffPanel({ detail }: { detail: ThreadDetail }): JSX.Element {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className={cn('drag-region flex h-13 items-center gap-2.5 border-b pr-3', sidebarCollapsed ? 'pl-19' : 'pl-3')}>
+      <div className={cn('drag-region flex h-13 items-center gap-2.5 border-b pr-3 transition-[padding] duration-150 ease-out', sidebarCollapsed ? 'pl-19' : 'pl-3')}>
         {sidebarCollapsed && <SidebarToggle />}
         <Button
           variant="ghost"
