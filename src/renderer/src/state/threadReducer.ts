@@ -64,7 +64,8 @@ export function reduceThread(detail: ThreadDetail, e: OrchestrationEvent): Threa
         createdAt: existing?.createdAt ?? e.ts,
         updatedAt: e.ts
       }
-      return { ...detail, workItems: upsert(detail.workItems, item) }
+      // patchThread({}) mirrors the projector, which bumps latest_activity_at on work.upserted
+      return { ...patchThread({}), workItems: upsert(detail.workItems, item) }
     }
     case 'checkpoint.created':
       return { ...detail, checkpoints: upsert(detail.checkpoints, { id: e.payload.checkpointId, threadId: detail.thread.id, turnId: e.payload.turnId, filesChanged: e.payload.filesChanged, additions: e.payload.additions, deletions: e.payload.deletions, createdAt: e.ts }) }

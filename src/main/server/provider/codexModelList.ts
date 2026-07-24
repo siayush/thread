@@ -69,32 +69,29 @@ function toModelOption(model: CodexModel): ModelOption {
   }
 }
 
-/** Run the transient probe: initialize → paginated `model/list` → close. */
-async function probeCodexModels(): Promise<ModelOption[]> {
-  const server = new CodexAppServer({ cwd: homedir() })
-  try {
-    await server.request('initialize', {
-      clientInfo: { name: 'thread', title: 'Thread', version: '0.2.0' },
-      capabilities: { experimentalApi: true }
-    })
-    server.notify('initialized')
+/** Run the transient probe: initialize → paginated `model/list`. The caller
+ *  owns the server's lifetime, so a timed-out/hung probe still gets its
+ *  child process killed. */
+async function probeCodexModels(server: CodexAppServer): Promise<ModelOption[]> {
+  await server.request('initialize', {
+    clientInfo: { name: 'thread', title: 'Thread', version: '0.2.0' },
+    capabilities: { experimentalApi: true }
+  })
+  server.notify('initialized')
 
-    const seen = new Set<string>()
-    const out: ModelOption[] = []
-    let cursor: string | null | undefined
-    do {
-      const res = (await server.request('model/list', cursor ? { cursor } : {})) as CodexModelListResponse
-      for (const model of res?.data ?? []) {
-        if (!model?.model || model.hidden || seen.has(model.model)) continue
-        seen.add(model.model)
-        out.push(toModelOption(model))
-      }
-      cursor = res?.nextCursor
-    } while (cursor)
-    return out
-  } finally {
-    server.close()
-  }
+  const seen = new Set<string>()
+  const out: ModelOption[] = []
+  let cursor: string | null | undefined
+  do {
+    const res = (await server.request('model/list', cursor ? { cursor } : {})) as CodexModelListResponse
+    for (const model of res?.data ?? []) {
+      if (!model?.model || model.hidden || seen.has(model.model)) continue
+      seen.add(model.model)
+      out.push(toModelOption(model))
+    }
+    cursor = res?.nextCursor
+  } while (cursor)
+  return out
 }
 
 let cached: Promise<ModelOption[]> | null = null
@@ -108,10 +105,18 @@ let cached: Promise<ModelOption[]> | null = null
 export function getCodexAgentModels(): Promise<ModelOption[]> {
   if (cached) return cached
   cached = (async () => {
-    const timeout = new Promise<ModelOption[]>((resolve) => {
-      setTimeout(() => resolve([]), PROBE_TIMEOUT_MS).unref?.()
-    })
-    return Promise.race([probeCodexModels(), timeout]).catch(() => [])
+    const server = new CodexAppServer({ cwd: homedir() })
+    try {
+      const timeout = new Promise<ModelOption[]>((resolve) => {
+        setTimeout(() => resolve([]), PROBE_TIMEOUT_MS).unref?.()
+      })
+      const probe = probeCodexModels(server)
+      probe.catch(() => {}) // close() after a lost race rejects it late — never unhandled
+      return await Promise.race([probe, timeout]).catch(() => [])
+    } finally {
+      // runs on success, failure, AND timeout — a hung codex can't leak its process
+      server.close()
+    }
   })().then((models) => {
     if (models.length === 0) cached = null // allow a retry on the next request
     return models

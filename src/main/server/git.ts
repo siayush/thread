@@ -32,7 +32,9 @@ async function tryGit(cwd: string, args: string[], env?: NodeJS.ProcessEnv): Pro
   }
 }
 
-/** Sync on purpose: called from the synchronous command-dispatch path (project.add). */
+/** Sync on purpose: called ONLY from the synchronous command-dispatch path
+ *  (project.add). Everything async must use `isGitRepoAsync` — a sync spawn
+ *  here blocks the main process for every window and IPC call. */
 export function isGitRepo(cwd: string): boolean {
   try {
     return (
@@ -47,6 +49,12 @@ export function isGitRepo(cwd: string): boolean {
   }
 }
 
+/** Async repo probe for the diff/snapshot paths (they run per turn and per
+ *  sidebar refresh — never block the main process for them). */
+export async function isGitRepoAsync(cwd: string): Promise<boolean> {
+  return (await tryGit(cwd, ['rev-parse', '--is-inside-work-tree']))?.trim() === 'true'
+}
+
 /** HEAD's tree hash, or the empty tree if the repo has no commits yet. */
 async function headTree(cwd: string): Promise<string> {
   return (await tryGit(cwd, ['rev-parse', 'HEAD^{tree}']))?.trim() ?? EMPTY_TREE
@@ -58,7 +66,7 @@ async function headTree(cwd: string): Promise<string> {
  * temp index. Returns the tree hash, or null if git isn't usable.
  */
 export async function snapshotWorkingTree(cwd: string): Promise<string | null> {
-  if (!isGitRepo(cwd)) return null
+  if (!(await isGitRepoAsync(cwd))) return null
   const indexFile = join(tmpdir(), `thread-index-${randomUUID()}`)
   const env = { ...process.env, GIT_INDEX_FILE: indexFile }
   try {
@@ -203,7 +211,7 @@ async function untrackedDiff(cwd: string): Promise<string> {
  */
 export async function workingDiff(cwd: string): Promise<DiffResult> {
   const scope: DiffScope = { kind: 'working' }
-  if (!isGitRepo(cwd)) return { scope, isGitRepo: false, files: [], additions: 0, deletions: 0 }
+  if (!(await isGitRepoAsync(cwd))) return { scope, isGitRepo: false, files: [], additions: 0, deletions: 0 }
   const head = await headTree(cwd)
   const [stagedRaw, unstagedRaw, untrackedRaw] = await Promise.all([
     tryGit(cwd, ['diff', '--no-color', '--cached', head]),
@@ -223,7 +231,7 @@ export async function workingDiff(cwd: string): Promise<DiffResult> {
 /** Diff for a specific turn, using the stored before/after tree snapshots. */
 export async function turnDiff(cwd: string, turnId: string, beforeTree: string, afterTree: string): Promise<DiffResult> {
   const scope: DiffScope = { kind: 'turn', turnId }
-  if (!isGitRepo(cwd)) return { scope, isGitRepo: false, files: [], additions: 0, deletions: 0 }
+  if (!(await isGitRepoAsync(cwd))) return { scope, isGitRepo: false, files: [], additions: 0, deletions: 0 }
   const raw = await tryGit(cwd, ['diff', '--no-color', beforeTree, afterTree])
   if (raw == null) return { scope, isGitRepo: true, files: [], additions: 0, deletions: 0, error: 'Failed to compute diff' }
   return buildResult(scope, filesFromDiff(raw, false))
@@ -231,7 +239,7 @@ export async function turnDiff(cwd: string, turnId: string, beforeTree: string, 
 
 /** Lightweight working-tree change counts for the sidebar diff pill. */
 export async function workingSummary(cwd: string): Promise<DiffSummary> {
-  if (!isGitRepo(cwd)) return { isGitRepo: false, files: 0, additions: 0, deletions: 0 }
+  if (!(await isGitRepoAsync(cwd))) return { isGitRepo: false, files: 0, additions: 0, deletions: 0 }
   const [status, numstat, cachedNumstat] = await Promise.all([
     tryGit(cwd, ['status', '--porcelain']),
     tryGit(cwd, ['diff', '--numstat']),
@@ -253,7 +261,7 @@ export async function workingSummary(cwd: string): Promise<DiffSummary> {
  *  (one call per action even for "all files", so nothing races on the index lock).
  *  `discard` is destructive. */
 export async function applyFileAction(cwd: string, action: DiffAction, paths: string[]): Promise<{ ok: boolean; error?: string }> {
-  if (!isGitRepo(cwd)) return { ok: false, error: 'Not a git repository' }
+  if (!(await isGitRepoAsync(cwd))) return { ok: false, error: 'Not a git repository' }
   if (paths.length === 0) return { ok: true }
   try {
     if (action === 'stage') {

@@ -28,6 +28,10 @@ export function registerRpc(engine: Engine): () => void {
     }
   })
 
+  // senders whose lifecycle listeners are already attached (one set per sender,
+  // no matter how many times it subscribes or reloads)
+  const wired = new Set<number>()
+
   ipcMain.on(RpcChannels.subscribe, (event, frame: SubscribeFrame) => {
     const sender = event.sender
     const senderId = sender.id
@@ -35,11 +39,23 @@ export function registerRpc(engine: Engine): () => void {
     if (!subs) {
       subs = new Map()
       subsBySender.set(senderId, subs)
-      sender.once('destroyed', () => {
+    }
+    if (!wired.has(senderId)) {
+      wired.add(senderId)
+      const dropAll = (): void => {
         for (const unsub of subsBySender.get(senderId)?.values() ?? []) unsub()
         subsBySender.delete(senderId)
+      }
+      sender.once('destroyed', () => {
+        dropAll()
+        wired.delete(senderId)
       })
+      // a reload does NOT destroy the webContents — without this, the old page's
+      // subscriptions leak in the engine and keep streaming to the new page
+      sender.on('did-navigate', dropAll)
     }
+    // a reloaded renderer restarts its id counter; never orphan a colliding sub
+    subs.get(frame.id)?.()
     const push = (message: StreamMessage): void => {
       if (!sender.isDestroyed()) sender.send(RpcChannels.stream, { id: frame.id, message } satisfies StreamFrame)
     }

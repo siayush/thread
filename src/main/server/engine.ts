@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path'
-import { readFileSync, statSync } from 'node:fs'
+import { readFile, stat } from 'node:fs/promises'
 import type { Command, CommandResult } from '@shared/commands'
 import type { NewEvent, OrchestrationEvent } from '@shared/events'
 import type { ReadFileResult, StreamMessage } from '@shared/rpc'
@@ -8,7 +8,7 @@ import { RUNTIME_MODE_TO_PERMISSION, type ApprovalDecision, type ApprovalKind, t
 import type { DiffAction, DiffResult, DiffScope, DiffSummary } from '@shared/diff'
 import { Db } from './db'
 import { applyEvent, getShellSnapshot, getThreadDetail, getThreadProjectPath } from './projections'
-import { applyFileAction, isGitRepo, snapshotWorkingTree, turnDiff, turnDiffStat, workingDiff, workingSummary } from './git'
+import { applyFileAction, isGitRepo, isGitRepoAsync, snapshotWorkingTree, turnDiff, turnDiffStat, workingDiff, workingSummary } from './git'
 import { providerForModel } from './models'
 import { ClaudeAdapter } from './provider/claudeAdapter'
 import { CodexAppServerAdapter } from './provider/codexAppServerAdapter'
@@ -65,8 +65,27 @@ export class Engine implements AgentHost {
   /** AbortController per thread with a turn in flight — set synchronously at dispatch. */
   private activeTurns = new Map<string, AbortController>()
   private shellTimer: NodeJS.Timeout | null = null
+  /** set at app quit — blocks any late append/db write from racing db.close() */
+  private disposed = false
 
   constructor(private readonly db: Db) {}
+
+  /** Tear down everything the engine owns. Must run before the DB is closed:
+   *  it stops the shell timer and in-flight turns so nothing writes afterwards. */
+  dispose(): void {
+    if (this.disposed) return
+    this.disposed = true
+    if (this.shellTimer) {
+      clearTimeout(this.shellTimer)
+      this.shellTimer = null
+    }
+    for (const abort of this.activeTurns.values()) abort.abort()
+    this.activeTurns.clear()
+    for (const p of this.pending.values()) p.resolve({ behavior: 'deny', message: 'Shutting down', interrupt: true })
+    this.pending.clear()
+    for (const adapter of Object.values(this.adapters)) adapter.dispose()
+    this.subs.clear()
+  }
 
   /**
    * Heal crash/quit leftovers (unanswerable approvals, threads stuck 'running').
@@ -87,6 +106,10 @@ export class Engine implements AgentHost {
       events.push(this.ev('thread.session', t.id, { threadId: t.id, status: 'error', lastError: 'Interrupted by app restart' }))
     }
     if (events.length) this.append(events)
+    // sweep deltas that predate compaction (or belong to messages finalized above)
+    this.db.run(
+      "DELETE FROM events WHERE type='message.delta' AND json_extract(payload,'$.messageId') IN (SELECT id FROM messages WHERE streaming=0)"
+    )
   }
 
   // ---------- subscriptions ----------
@@ -108,6 +131,8 @@ export class Engine implements AgentHost {
 
   // ---------- event append / broadcast ----------
   private append(events: NewEvent[]): OrchestrationEvent[] {
+    // a late callback (turn finishing during quit) must not write to a closed DB
+    if (this.disposed) return []
     // one transaction per batch: the log and the projections stay in lockstep
     const applied = this.db.transaction(() => {
       const out: OrchestrationEvent[] = []
@@ -240,7 +265,8 @@ export class Engine implements AgentHost {
   private stopThreadWork(threadId: string): void {
     this.activeTurns.get(threadId)?.abort()
     this.rejectPendingForThread(threadId)
-    for (const adapter of Object.values(this.adapters)) adapter.cancelTitle(threadId)
+    // disposeThread also kills any long-lived per-thread child process (codex app-server)
+    for (const adapter of Object.values(this.adapters)) adapter.disposeThread(threadId)
     this.sessionAllow.delete(threadId)
   }
 
@@ -312,8 +338,12 @@ export class Engine implements AgentHost {
       this.rejectPendingForThread(p.threadId)
     }
 
+    // quitting: the DB is about to close — skip the checkpoint bookkeeping
+    if (this.disposed) return
+
     // checkpoint the turn's file changes for the diff viewer
     const after = await snapshotWorkingTree(p.cwd)
+    if (this.disposed) return
     this.db.run('UPDATE turn_git SET after_tree=? WHERE turn_id=?', [after, p.turnId])
     if (before && after && before !== after) {
       const stat = await turnDiffStat(p.cwd, before, after)
@@ -368,6 +398,11 @@ export class Engine implements AgentHost {
 
   finalizeAssistantMessage(threadId: string, messageId: string, finalText: string): void {
     this.append([this.ev('message.completed', threadId, { messageId, threadId, text: finalText })])
+    if (this.disposed) return
+    // Compact: deltas are streaming transport only — once message.completed holds
+    // the full text, replay is identical without them (created '' → completed full),
+    // and keeping them would double-store every reply and grow the log unboundedly.
+    this.db.run("DELETE FROM events WHERE type='message.delta' AND json_extract(payload,'$.messageId')=?", [messageId])
   }
 
   onWork(threadId: string, upsert: Parameters<AgentHost['onWork']>[1]): void {
@@ -439,7 +474,7 @@ export class Engine implements AgentHost {
     const cwd = info.project.folderPath
     if (scope.kind === 'working') return workingDiff(cwd)
     const row = this.db.get<{ before_tree: string | null; after_tree: string | null }>('SELECT before_tree, after_tree FROM turn_git WHERE turn_id=?', [scope.turnId])
-    if (!row?.before_tree || !row?.after_tree) return { scope, isGitRepo: isGitRepo(cwd), files: [], additions: 0, deletions: 0, error: 'No checkpoint for this turn' }
+    if (!row?.before_tree || !row?.after_tree) return { scope, isGitRepo: await isGitRepoAsync(cwd), files: [], additions: 0, deletions: 0, error: 'No checkpoint for this turn' }
     return turnDiff(cwd, scope.turnId, row.before_tree, row.after_tree)
   }
 
@@ -463,10 +498,10 @@ export class Engine implements AgentHost {
     const abs = resolve(isAbsolute(filePath) ? filePath : join(root, filePath))
     if (abs !== root && !abs.startsWith(root + sep)) return { ok: false, path: filePath, error: 'File is outside the project folder' }
     try {
-      const stat = statSync(abs)
-      if (!stat.isFile()) return { ok: false, path: filePath, error: 'Not a file' }
-      if (stat.size > 2_000_000) return { ok: false, path: filePath, error: 'File is too large to preview' }
-      const buf = readFileSync(abs)
+      const st = await stat(abs)
+      if (!st.isFile()) return { ok: false, path: filePath, error: 'Not a file' }
+      if (st.size > 2_000_000) return { ok: false, path: filePath, error: 'File is too large to preview' }
+      const buf = await readFile(abs)
       if (buf.includes(0)) return { ok: false, path: filePath, error: 'Cannot preview a binary file' }
       return { ok: true, path: relative(root, abs), content: buf.toString('utf8') }
     } catch (err) {

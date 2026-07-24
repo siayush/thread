@@ -26,6 +26,9 @@ export function startServer(dbPath: string): Server {
     engine,
     dispose: () => {
       unregisterRpc()
+      // stop timers, in-flight turns, and provider child processes BEFORE the
+      // DB closes, so no late callback writes to a closed handle
+      engine.dispose()
       db.close()
     }
   }

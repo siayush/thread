@@ -1,4 +1,4 @@
-import { createElement, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createElement, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Message, ProposedPlan, ThreadDetail, WorkItem } from '@shared/domain'
 import {
   Bot,
@@ -108,7 +108,7 @@ function workIcon(w: WorkItem): LucideIcon {
   }
 }
 
-function WorkRow({ work }: { work: WorkItem }): JSX.Element {
+const WorkRow = memo(function WorkRow({ work }: { work: WorkItem }): JSX.Element {
   const [open, setOpen] = useState(false)
   const expandable = !!work.body
   return (
@@ -153,10 +153,10 @@ function WorkRow({ work }: { work: WorkItem }): JSX.Element {
       )}
     </div>
   )
-}
+})
 
 /** Reasoning ("thinking") stream: live while the model reasons, collapsible once done. */
-function ReasoningBlock({ message }: { message: Message }): JSX.Element {
+const ReasoningBlock = memo(function ReasoningBlock({ message }: { message: Message }): JSX.Element {
   const streaming = message.streaming
   const [open, setOpen] = useState(false)
   const expanded = streaming || open
@@ -181,7 +181,7 @@ function ReasoningBlock({ message }: { message: Message }): JSX.Element {
       )}
     </div>
   )
-}
+})
 
 function TurnBlock({ group, onOpenDiff }: { group: TurnGroup; onOpenDiff: (turnId: string) => void }): JSX.Element {
   const works = group.entries.filter((e): e is Extract<Entry, { kind: 'work' }> => e.kind === 'work')
@@ -254,7 +254,13 @@ function TurnBlock({ group, onOpenDiff }: { group: TurnGroup; onOpenDiff: (turnI
 }
 
 export function MessagesTimeline({ detail, onOpenDiff }: Props): JSX.Element {
-  const groups = groupByTurn(detail)
+  const groups = useMemo(
+    () => groupByTurn(detail),
+    // deliberately keyed on the five arrays groupByTurn reads, not `detail` itself —
+    // the fold replaces exactly the arrays an event touched, nothing else changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [detail.turns, detail.messages, detail.workItems, detail.plans, detail.checkpoints]
+  )
   const scrollRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const stick = useRef(true)
@@ -267,7 +273,7 @@ export function MessagesTimeline({ detail, onOpenDiff }: Props): JSX.Element {
 
   useLayoutEffect(() => {
     if (stick.current) bottomRef.current?.scrollIntoView({ block: 'end' })
-  })
+  }, [groups])
 
   const working = detail.thread.status === 'running'
   const runningTurn = detail.turns.find((t) => t.state === 'running')

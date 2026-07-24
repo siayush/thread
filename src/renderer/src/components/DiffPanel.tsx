@@ -165,25 +165,31 @@ function PierreDiff({
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const viewRef = useRef<CodeViewHandle<undefined>>(null)
 
-  const items = useMemo<CodeViewDiffItem[]>(() => {
-    if (!patch.trim()) return []
+  // parsing is pure in `patch` and can be expensive for large diffs — keep it
+  // independent of collapse state so a header toggle never re-parses everything
+  const parsed = useMemo(() => {
+    if (!patch.trim()) return { key: '', files: [] as ReturnType<typeof parsePatchFiles>[number]['files'] }
     const key = fnv1a(patch)
-    let parsed: ReturnType<typeof parsePatchFiles>
     try {
-      parsed = parsePatchFiles(patch, `thread:${key}`)
+      return { key, files: parsePatchFiles(patch, `thread:${key}`).flatMap((p) => p.files) }
     } catch {
-      return []
+      return { key, files: [] }
     }
-    // collapse toggles must bump `version`, or CodeView's reconciler ignores
-    // the updated item for an id it already knows
-    return parsed.flatMap((p) => p.files).map((fileDiff, i) => ({
-      id: `${key}:${i}`,
-      type: 'diff' as const,
-      fileDiff,
-      collapsed: !!collapsed[fileDiff.name],
-      version: collapsed[fileDiff.name] ? 1 : 0
-    }))
-  }, [patch, collapsed])
+  }, [patch])
+
+  const items = useMemo<CodeViewDiffItem[]>(
+    () =>
+      // collapse toggles must bump `version`, or CodeView's reconciler ignores
+      // the updated item for an id it already knows
+      parsed.files.map((fileDiff, i) => ({
+        id: `${parsed.key}:${i}`,
+        type: 'diff' as const,
+        fileDiff,
+        collapsed: !!collapsed[fileDiff.name],
+        version: collapsed[fileDiff.name] ? 1 : 0
+      })),
+    [parsed, collapsed]
+  )
 
   const options = useMemo(() => diffOptions(view), [view])
 

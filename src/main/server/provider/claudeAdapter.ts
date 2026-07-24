@@ -110,8 +110,14 @@ export class ClaudeAdapter implements ProviderAdapter {
     return sanitizeTitle(text)
   }
 
-  cancelTitle(threadId: string): void {
+  // the Claude CLI is per-turn (no long-lived per-thread process); only title jobs persist
+  disposeThread(threadId: string): void {
     this.titleJobs.get(threadId)?.abort()
+  }
+
+  dispose(): void {
+    for (const abort of this.titleJobs.values()) abort.abort()
+    this.titleJobs.clear()
   }
 
   /**

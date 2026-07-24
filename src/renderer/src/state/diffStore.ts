@@ -64,19 +64,39 @@ interface DiffSummaryState {
   fetch: (threadId: string, projectId: string, force?: boolean) => void
 }
 
+/**
+ * Refreshes are keyed on thread activity, which ticks on every tool call the
+ * agent makes — but each summary costs several `git` processes in the main
+ * process. Debounce to one fetch per project per second so a busy turn
+ * refreshes about once a second, not once per event.
+ */
+const SUMMARY_DEBOUNCE_MS = 1000
+const summaryTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
 export const useDiffSummary = create<DiffSummaryState>((set, get) => ({
   byProject: {},
   inflight: {},
 
   fetch: (threadId, projectId, force) => {
-    if (get().inflight[projectId]) return
     if (!force && get().byProject[projectId]) return
-    set((s) => ({ inflight: { ...s.inflight, [projectId]: true } }))
-    void useServer
-      .getState()
-      .getDiffSummary(threadId)
-      .then((summary) => set((s) => ({ byProject: { ...s.byProject, [projectId]: summary } })))
-      .catch(() => {})
-      .finally(() => set((s) => ({ inflight: { ...s.inflight, [projectId]: false } })))
+    if (summaryTimers.has(projectId)) return // a refresh is already queued
+
+    const run = (): void => {
+      summaryTimers.delete(projectId)
+      if (get().inflight[projectId]) {
+        // busy: queue exactly one follow-up pass so the last change still lands
+        summaryTimers.set(projectId, setTimeout(run, SUMMARY_DEBOUNCE_MS))
+        return
+      }
+      set((s) => ({ inflight: { ...s.inflight, [projectId]: true } }))
+      void useServer
+        .getState()
+        .getDiffSummary(threadId)
+        .then((summary) => set((s) => ({ byProject: { ...s.byProject, [projectId]: summary } })))
+        .catch(() => {})
+        .finally(() => set((s) => ({ inflight: { ...s.inflight, [projectId]: false } })))
+    }
+
+    summaryTimers.set(projectId, setTimeout(run, SUMMARY_DEBOUNCE_MS))
   }
 }))
