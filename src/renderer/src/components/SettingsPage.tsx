@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { ArrowLeft, Info, RotateCcw, SlidersHorizontal } from 'lucide-react'
+import appIcon from '@resources/icon.png'
 
 type SectionId = 'general' | 'about'
 
@@ -74,9 +75,7 @@ function AboutSection(): JSX.Element {
   return (
     <div className="py-5">
       <div className="flex items-center gap-3">
-        <div className="grid size-11 place-items-center rounded-xl bg-primary/10 text-primary">
-          <span className="text-lg font-semibold">T</span>
-        </div>
+        <img src={appIcon} alt="" className="size-11 rounded-xl" />
         <div>
           <div className="text-[15px] font-semibold text-foreground">Thread</div>
           <div className="text-[13px] text-muted-foreground">Version 0.2.0</div>
