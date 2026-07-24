@@ -1,5 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, FileCode2, TriangleAlert } from 'lucide-react'
+import type { CodeViewFileItem } from '@pierre/diffs'
+import { CodeView, type CodeViewHandle } from '@pierre/diffs/react'
+import { fnv1a } from './CodeWorkerPool'
 import { useServer } from '../state/serverStore'
 import { useUi } from '../state/uiStore'
 import { SidebarToggle } from './Sidebar'
@@ -9,9 +12,37 @@ import { Badge } from '@/components/ui/badge'
 import { Spinner } from '@/components/ui/spinner'
 
 /**
+ * Bridges @pierre/diffs' internal styling to the Thread palette. The file
+ * header is disabled (FileView has its own header bar), so only the code
+ * surface needs blending.
+ */
+const FILE_UNSAFE_CSS = `
+[data-file],
+[data-error-wrapper],
+[data-virtualizer-buffer] {
+  --diffs-font-family: var(--font-mono) !important;
+  --diffs-bg: var(--background) !important;
+  --diffs-dark-bg: var(--background) !important;
+  --diffs-token-dark-bg: transparent;
+  background-color: var(--diffs-bg) !important;
+}
+`
+
+const FILE_OPTIONS = {
+  themeType: 'dark',
+  disableFileHeader: true,
+  overflow: 'scroll',
+  unsafeCSS: FILE_UNSAFE_CSS,
+  // CodeViewLayout requires all three fields; only paddingBottom deviates from defaults
+  layout: { paddingTop: 8, paddingBottom: 16, gap: 8 }
+} as const
+
+/**
  * Read-only file viewer for file references the agent emits in chat
  * (`src/foo.ts`, `foo.ts:42`). Fills the main area like the diff view; the
- * back button (or Escape) returns to the conversation.
+ * back button (or Escape) returns to the conversation. Rendering goes through
+ * @pierre/diffs' CodeView — the same shiki worker pool, theme, and
+ * virtualization as the diff view.
  */
 export function FileView({ threadId }: { threadId: string }): JSX.Element {
   const target = useUi((s) => s.fileTarget)
@@ -21,7 +52,7 @@ export function FileView({ threadId }: { threadId: string }): JSX.Element {
 
   // forPath marks which request the result belongs to; a stale result renders as loading
   const [state, setState] = useState<{ forPath: string; path: string; content: string | null; error: string | null } | null>(null)
-  const scrollRef = useRef<HTMLDivElement>(null)
+  const viewRef = useRef<CodeViewHandle<undefined>>(null)
 
   const back = (): void => setThreadView('chat')
 
@@ -48,15 +79,24 @@ export function FileView({ threadId }: { threadId: string }): JSX.Element {
 
   const loaded = state && state.forPath === path ? state : null
 
+  const item = useMemo<CodeViewFileItem | null>(() => {
+    if (loaded?.content == null) return null
+    const cacheKey = fnv1a(`${loaded.path}\n${loaded.content}`)
+    // the id doubles as the content hash: CodeView ignores same-id updates
+    // unless `version` is bumped, so a fresh id per content sidesteps that
+    return { id: `file:${cacheKey}`, type: 'file', file: { name: loaded.path, contents: loaded.content, cacheKey } }
+  }, [loaded])
+
   // once loaded, bring the referenced line into view
   const line = target?.line ?? null
   useEffect(() => {
-    if (loaded?.content == null || line == null) return
-    scrollRef.current?.querySelector(`[data-line="${line}"]`)?.scrollIntoView({ block: 'center' })
-  }, [loaded, line])
-
-  const lines = loaded?.content?.split('\n') ?? []
-  const gutterWidth = `${Math.max(3, String(lines.length).length)}ch`
+    if (!item || line == null) return
+    const id = item.id
+    const raf = requestAnimationFrame(() => {
+      viewRef.current?.scrollTo({ type: 'line', id, lineNumber: line, align: 'center' })
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [item, line])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -76,7 +116,7 @@ export function FileView({ threadId }: { threadId: string }): JSX.Element {
         </span>
       </header>
 
-      <div className="flex-1 overflow-auto" ref={scrollRef}>
+      <div className="min-h-0 flex-1 overflow-hidden">
         {!loaded ? (
           <div className="grid h-full place-items-center text-muted-foreground">
             <Spinner className="size-4" />
@@ -85,25 +125,17 @@ export function FileView({ threadId }: { threadId: string }): JSX.Element {
           <div className="mx-auto mt-10 flex w-fit items-center gap-2 rounded-[10px] border border-amber/35 bg-amber/8 px-3.5 py-2.5 text-xs text-amber">
             <TriangleAlert size={13} /> {loaded.error}
           </div>
-        ) : (
-          <pre className="m-0 min-w-fit py-3 font-mono text-xs leading-[1.6] text-foreground/85">
-            {lines.map((text, i) => {
-              const n = i + 1
-              const hit = n === line
-              return (
-                <div key={n} data-line={n} className={cn('flex px-0', hit && 'bg-amber/10 shadow-[inset_2px_0_0_var(--color-amber)]')}>
-                  <span
-                    className={cn('sticky left-0 shrink-0 bg-background pr-3.5 pl-3.5 text-right text-muted-foreground/50 select-none', hit && 'text-amber')}
-                    style={{ minWidth: gutterWidth }}
-                  >
-                    {n}
-                  </span>
-                  <span className="pr-4 whitespace-pre">{text}</span>
-                </div>
-              )
-            })}
-          </pre>
-        )}
+        ) : item ? (
+          /* CodeView's root element is its own scroll container (it attaches
+             its scroll listener there), so it must get overflow-y itself */
+          <CodeView
+            ref={viewRef}
+            className="h-full overflow-y-auto overscroll-contain"
+            items={[item]}
+            options={FILE_OPTIONS}
+            selectedLines={line != null ? { id: item.id, range: { start: line, end: line } } : null}
+          />
+        ) : null}
       </div>
     </div>
   )
