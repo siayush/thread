@@ -39,6 +39,15 @@ export function ChatView({ threadId }: { threadId: string }): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadId, projectId, activityKey])
 
+  // edits made outside the app produce no thread activity — refresh the
+  // change count when the window regains focus
+  useEffect(() => {
+    if (!projectId) return
+    const onFocus = (): void => fetchSummary(threadId, projectId, true)
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [threadId, projectId, fetchSummary])
+
   if (!detail) {
     return <div className="grid flex-1 place-items-center text-muted-foreground">Loading thread…</div>
   }

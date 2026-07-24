@@ -292,6 +292,16 @@ export function DiffPanel({ detail }: { detail: ThreadDetail }): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadId, scopeKey, detail.checkpoints.length, detail.thread.status])
 
+  // edits made outside the app (another editor, terminal) produce no thread
+  // events, so revalidate the working diff when the window regains focus.
+  // Turn diffs are immutable snapshots — nothing external can change them.
+  useEffect(() => {
+    if (diffScope.kind !== 'working') return
+    const onFocus = (): void => void load(threadId, diffScope)
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [threadId, diffScope, load])
+
   const turns = [...detail.turns].filter((t) => detail.checkpoints.some((c) => c.turnId === t.id)).sort((a, b) => b.startedAt - a.startedAt)
 
   const scopeItems = useMemo(() => {
