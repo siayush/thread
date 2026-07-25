@@ -7,6 +7,7 @@ import type { Project, ThreadSummary } from '@shared/domain'
 import { ChevronDown, ChevronRight, Ellipsis, Folder, SquarePen, Plus, Search, FolderPlus, PanelLeft, Settings } from 'lucide-react'
 import { SourceControlIcon } from '@/components/ui/source-control-icon'
 import { relativeTime } from '../lib/format'
+import { useAnimationReplay } from '../lib/useAnimationReplay'
 import { confirmDialog } from './ConfirmDialog'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -435,7 +436,9 @@ export function Sidebar(): JSX.Element {
   const collapsed = useUi((s) => s.sidebarCollapsed)
   const width = useUi((s) => s.sidebarWidth)
   const resizing = useUi((s) => s.sidebarResizing)
+  const settingsOpen = useUi((s) => s.settingsOpen)
   const diffMode = threadView === 'diff' && !!activeThreadId
+  const listRef = useAnimationReplay<HTMLDivElement>(settingsOpen)
 
   const addProject = async (): Promise<void> => {
     const folder = await window.native.pickFolder()
@@ -480,7 +483,7 @@ export function Sidebar(): JSX.Element {
       {diffMode ? (
         <FileChangesView />
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col duration-200 ease-out animate-in fade-in slide-in-from-left-4">
+        <div ref={listRef} className="flex min-h-0 flex-1 flex-col duration-200 ease-out animate-in fade-in slide-in-from-left-4">
           <Button
             variant="ghost"
             className="mx-2 my-1 h-auto justify-start gap-2 px-2 py-1.5 text-[13px] font-normal text-muted-foreground"

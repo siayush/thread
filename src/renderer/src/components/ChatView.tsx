@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { SidebarToggle } from './Sidebar'
 import { useDiffSummary } from '../state/diffStore'
+import { useAnimationReplay } from '../lib/useAnimationReplay'
 
 export function ChatView({ threadId }: { threadId: string }): JSX.Element {
   const detail = useServer((s) => s.details[threadId])
@@ -27,6 +28,7 @@ export function ChatView({ threadId }: { threadId: string }): JSX.Element {
   const threadView = useUi((s) => s.threadView)
   const openDiff = useUi((s) => s.openDiff)
   const sidebarCollapsed = useUi((s) => s.sidebarCollapsed)
+  const paneRef = useAnimationReplay<HTMLDivElement>(useUi((s) => s.settingsOpen))
   const changeCount = useDiffSummary((s) => (detail ? s.byProject[detail.thread.projectId]?.files ?? 0 : 0))
   const summary = useDiffSummary((s) => (detail ? s.byProject[detail.thread.projectId] : undefined))
   const fetchSummary = useDiffSummary((s) => s.fetch)
@@ -61,7 +63,7 @@ export function ChatView({ threadId }: { threadId: string }): JSX.Element {
   // a chat file reference fills the main area with a read-only viewer; its header carries the back button
   if (threadView === 'file') {
     return (
-      <div key="file" className="flex min-h-0 flex-1 flex-col duration-200 ease-out animate-in fade-in slide-in-from-right-4">
+      <div key="file" ref={paneRef} className="flex min-h-0 flex-1 flex-col duration-200 ease-out animate-in fade-in slide-in-from-right-4">
         <FileView threadId={threadId} />
       </div>
     )
@@ -70,14 +72,14 @@ export function ChatView({ threadId }: { threadId: string }): JSX.Element {
   // the diff view fills the main area; the sidebar (FileChangesView) carries the file list + back button
   if (threadView === 'diff') {
     return (
-      <div key="diff" className="flex min-h-0 flex-1 flex-col duration-200 ease-out animate-in fade-in slide-in-from-right-4">
+      <div key="diff" ref={paneRef} className="flex min-h-0 flex-1 flex-col duration-200 ease-out animate-in fade-in slide-in-from-right-4">
         <DiffPanel detail={detail} />
       </div>
     )
   }
 
   return (
-    <div key="chat" className="flex min-h-0 flex-1 flex-col duration-200 ease-out animate-in fade-in slide-in-from-left-4">
+    <div key="chat" ref={paneRef} className="flex min-h-0 flex-1 flex-col duration-200 ease-out animate-in fade-in slide-in-from-left-4">
       <header className={cn('drag-region flex h-13 items-center justify-between border-b pr-3.5 transition-[padding] duration-150 ease-out', sidebarCollapsed ? 'pl-titlebar' : 'pl-5')}>
         <div className="no-drag flex min-w-0 items-center gap-2.5">
           {sidebarCollapsed && <SidebarToggle />}

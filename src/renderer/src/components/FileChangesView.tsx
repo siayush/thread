@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { SourceControlIcon } from '@/components/ui/source-control-icon'
 import { alertDialog, confirmDialog } from './ConfirmDialog'
+import { useAnimationReplay } from '../lib/useAnimationReplay'
 
 const STATUS_LETTER: Record<DiffFile['status'], string> = { added: 'A', modified: 'M', deleted: 'D', renamed: 'R' }
 const STATUS_COLOR: Record<DiffFile['status'], string> = {
@@ -170,6 +171,7 @@ export function FileChangesView(): JSX.Element {
   const result = useDiffData((s) => s.result)
   const reload = useDiffData((s) => s.reload)
   const refreshSummary = useDiffSummary((s) => s.fetch)
+  const paneRef = useAnimationReplay<HTMLDivElement>(useUi((s) => s.settingsOpen))
 
   const projectId = detail?.thread.projectId
   const isWorking = result?.scope.kind === 'working'
@@ -206,7 +208,7 @@ export function FileChangesView(): JSX.Element {
   const unstaged = files.filter((f) => !f.staged)
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col duration-200 ease-out animate-in fade-in slide-in-from-right-4">
+    <div ref={paneRef} className="flex min-h-0 flex-1 flex-col duration-200 ease-out animate-in fade-in slide-in-from-right-4">
       {detail && (
         <div className="mx-2 mt-1 mb-1 flex items-center gap-2 rounded-lg border bg-muted px-2.5 py-1.5">
           <SourceControlIcon className="size-3.5 shrink-0 text-muted-foreground" />

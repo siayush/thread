@@ -119,7 +119,7 @@ export function SettingsPage(): JSX.Element | null {
   return (
     <div className="animate-in fade-in fixed inset-0 z-50 flex bg-background duration-150">
       {/* left nav */}
-      <aside className="flex w-64 shrink-0 flex-col border-r bg-card">
+      <aside className="flex w-64 shrink-0 flex-col border-r bg-card duration-200 ease-out animate-in fade-in slide-in-from-right-4">
         <div className="drag-region flex h-13 items-center pr-4 pl-titlebar">
           <span className="text-sm font-semibold tracking-tight text-foreground">Settings</span>
         </div>
@@ -156,7 +156,7 @@ export function SettingsPage(): JSX.Element | null {
       </aside>
 
       {/* content */}
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col duration-200 ease-out animate-in fade-in slide-in-from-right-4">
         <div className="drag-region flex h-13 items-center justify-end pr-5 pl-5">
           <Button variant="ghost" size="sm" className="no-drag gap-1.5 text-muted-foreground" onClick={restoreDefaults}>
             <RotateCcw className="size-[13px]" />
