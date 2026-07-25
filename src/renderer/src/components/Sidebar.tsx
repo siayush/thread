@@ -470,7 +470,7 @@ export function Sidebar(): JSX.Element {
         )}
         style={{ width }}
       >
-      <div className="drag-region flex h-13 items-center gap-1 pr-2 pl-19">
+      <div className="drag-region flex h-13 items-center gap-1 pr-2 pl-titlebar">
         <span className="no-drag flex flex-1 items-center gap-1.5 overflow-hidden">
           <span className="text-sm font-semibold tracking-tight text-foreground">Thread</span>
         </span>
