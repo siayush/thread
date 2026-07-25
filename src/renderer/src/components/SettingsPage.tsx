@@ -120,7 +120,7 @@ export function SettingsPage(): JSX.Element | null {
     <div className="animate-in fade-in fixed inset-0 z-50 flex bg-background duration-150">
       {/* left nav */}
       <aside className="flex w-64 shrink-0 flex-col border-r bg-card">
-        <div className="drag-region flex h-13 items-center pr-4 pl-19">
+        <div className="drag-region flex h-13 items-center pr-4 pl-titlebar">
           <span className="text-sm font-semibold tracking-tight text-foreground">Settings</span>
         </div>
         <nav className="flex-1 space-y-0.5 overflow-y-auto p-2">
