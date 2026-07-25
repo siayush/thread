@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useServer } from '../state/serverStore'
-import { isProjectExpanded, useUi } from '../state/uiStore'
+import { DEFAULT_SIDEBAR_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH, isProjectExpanded, useUi } from '../state/uiStore'
 import { useDiffSummary } from '../state/diffStore'
 import { FileChangesView } from './FileChangesView'
 import type { Project, ThreadSummary } from '@shared/domain'
@@ -30,6 +30,74 @@ export function SidebarToggle({ className }: { className?: string }): JSX.Elemen
     >
       <PanelLeft className="size-[15px]" />
     </Button>
+  )
+}
+
+/** Drag handle on the sidebar's right edge — fixed, outside the overflow-hidden panel so it isn't clipped. */
+function SidebarResizer(): JSX.Element | null {
+  const collapsed = useUi((s) => s.sidebarCollapsed)
+  const width = useUi((s) => s.sidebarWidth)
+  const resizing = useUi((s) => s.sidebarResizing)
+  const setSidebarWidth = useUi((s) => s.setSidebarWidth)
+  const setSidebarResizing = useUi((s) => s.setSidebarResizing)
+
+  if (collapsed) return null
+
+  const startDrag = (e: React.PointerEvent): void => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startWidth = useUi.getState().sidebarWidth
+    setSidebarResizing(true)
+    const prevUserSelect = document.body.style.userSelect
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'col-resize'
+
+    const onMove = (ev: PointerEvent): void => setSidebarWidth(startWidth + ev.clientX - startX)
+    const onUp = (): void => {
+      setSidebarResizing(false)
+      document.body.style.userSelect = prevUserSelect
+      document.body.style.cursor = ''
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+  }
+
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize sidebar"
+      aria-valuenow={width}
+      aria-valuemin={SIDEBAR_MIN_WIDTH}
+      aria-valuemax={SIDEBAR_MAX_WIDTH}
+      tabIndex={0}
+      className={cn(
+        // no-drag: the top of the handle overlaps the title-bar drag region
+        'group/resizer no-drag fixed inset-y-0 z-20 w-1.5 cursor-col-resize outline-none',
+        !resizing && 'transition-[left] duration-150 ease-out'
+      )}
+      style={{ left: width - 3 }}
+      onPointerDown={startDrag}
+      onDoubleClick={() => setSidebarWidth(DEFAULT_SIDEBAR_WIDTH)}
+      onKeyDown={(e) => {
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+        e.preventDefault()
+        setSidebarWidth(width + (e.key === 'ArrowLeft' ? -16 : 16))
+      }}
+      title="Drag to resize · double-click to reset"
+    >
+      <div
+        className={cn(
+          'pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-primary/60 opacity-0 transition-opacity duration-100',
+          'group-hover/resizer:opacity-100 group-focus-visible/resizer:opacity-100',
+          resizing && 'opacity-100'
+        )}
+      />
+    </div>
   )
 }
 
@@ -365,6 +433,8 @@ export function Sidebar(): JSX.Element {
   const threadView = useUi((s) => s.threadView)
   const activeThreadId = useUi((s) => s.activeThreadId)
   const collapsed = useUi((s) => s.sidebarCollapsed)
+  const width = useUi((s) => s.sidebarWidth)
+  const resizing = useUi((s) => s.sidebarResizing)
   const diffMode = threadView === 'diff' && !!activeThreadId
 
   const addProject = async (): Promise<void> => {
@@ -387,16 +457,18 @@ export function Sidebar(): JSX.Element {
       {/* in-flow spacer: animates its width so the layout follows the panel's slide */}
       <div
         aria-hidden
-        className={cn('shrink-0 transition-[width] duration-150 ease-out', collapsed ? 'w-0' : 'w-66')}
+        className={cn('shrink-0', !resizing && 'transition-[width] duration-150 ease-out')}
+        style={{ width: collapsed ? 0 : width }}
       />
       {/* fixed full-width panel slides off-canvas when collapsed — full width so its
           content doesn't reflow mid-slide; translate (not left) keeps the slide on
           the compositor instead of relayouting the sidebar tree every frame */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-10 flex w-66 flex-col overflow-hidden border-r bg-card transition-transform duration-150 ease-out will-change-transform',
+          'fixed inset-y-0 left-0 z-10 flex flex-col overflow-hidden border-r bg-card transition-transform duration-150 ease-out will-change-transform',
           collapsed && '-translate-x-full'
         )}
+        style={{ width }}
       >
       <div className="drag-region flex h-13 items-center gap-1 pr-2 pl-19">
         <span className="no-drag flex flex-1 items-center gap-1.5 overflow-hidden">
@@ -458,6 +530,7 @@ export function Sidebar(): JSX.Element {
         </Button>
       </div>
       </aside>
+      <SidebarResizer />
     </>
   )
 }

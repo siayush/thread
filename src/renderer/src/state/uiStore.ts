@@ -17,6 +17,10 @@ export const THEMES: { id: ThemeId; label: string }[] = [
 export const DEFAULT_THEME: ThemeId = 'classic-dark'
 export const DEFAULT_DIFF_VIEW: DiffView = 'inline'
 
+export const SIDEBAR_MIN_WIDTH = 200
+export const SIDEBAR_MAX_WIDTH = 520
+export const DEFAULT_SIDEBAR_WIDTH = 264
+
 /** a file reference the chat linked to (path relative to the project, optional line) */
 export interface FileTarget {
   path: string
@@ -26,6 +30,9 @@ export interface FileTarget {
 interface UiState {
   activeThreadId: string | null
   sidebarCollapsed: boolean
+  sidebarWidth: number
+  /** true mid-drag; suppresses the width transitions so the panel tracks the cursor */
+  sidebarResizing: boolean
   expandedProjects: Record<string, boolean>
   threadView: ThreadView
   /** which file the diff view is focused on; null = all files */
@@ -43,6 +50,9 @@ interface UiState {
   setActive: (threadId: string | null) => void
   toggleSidebar: () => void
   setSidebarCollapsed: (collapsed: boolean) => void
+  /** clamped to [SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH] */
+  setSidebarWidth: (width: number) => void
+  setSidebarResizing: (resizing: boolean) => void
   toggleProject: (projectId: string) => void
   setProjectExpanded: (projectId: string, expanded: boolean) => void
   setThreadView: (view: ThreadView) => void
@@ -63,6 +73,8 @@ export const useUi = create<UiState>()(
     (set) => ({
       activeThreadId: null,
       sidebarCollapsed: false,
+      sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
+      sidebarResizing: false,
       expandedProjects: {},
       threadView: 'chat',
       diffSelectedFile: null,
@@ -79,6 +91,9 @@ export const useUi = create<UiState>()(
 
       toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
       setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
+      setSidebarWidth: (width) =>
+        set({ sidebarWidth: Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, Math.round(width))) }),
+      setSidebarResizing: (resizing) => set({ sidebarResizing: resizing }),
 
       toggleProject: (projectId) => set((s) => ({ expandedProjects: { ...s.expandedProjects, [projectId]: !(s.expandedProjects[projectId] ?? true) } })),
       setProjectExpanded: (projectId, expanded) => set((s) => ({ expandedProjects: { ...s.expandedProjects, [projectId]: expanded } })),
@@ -99,6 +114,7 @@ export const useUi = create<UiState>()(
       partialize: (s) => ({
         activeThreadId: s.activeThreadId,
         sidebarCollapsed: s.sidebarCollapsed,
+        sidebarWidth: s.sidebarWidth,
         expandedProjects: s.expandedProjects,
         diffScope: s.diffScope,
         diffView: s.diffView,
