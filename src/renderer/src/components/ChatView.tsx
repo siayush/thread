@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { SidebarToggle } from './Sidebar'
+import { ExplorerToggle } from './ExplorerDock'
 import { useDiffSummary } from '../state/diffStore'
 import { useAnimationReplay } from '../lib/useAnimationReplay'
 
@@ -107,6 +108,7 @@ export function ChatView({ threadId }: { threadId: string }): JSX.Element {
               )}
             </Button>
           )}
+          <ExplorerToggle />
         </div>
       </header>
 

@@ -3,8 +3,9 @@ import { useServer } from '../state/serverStore'
 import { DEFAULT_SIDEBAR_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH, isProjectExpanded, useUi } from '../state/uiStore'
 import { useDiffSummary } from '../state/diffStore'
 import { FileChangesView } from './FileChangesView'
+import { PanelResizer } from './PanelResizer'
 import type { Project, ThreadSummary } from '@shared/domain'
-import { ChevronDown, ChevronRight, Ellipsis, Folder, SquarePen, Plus, Search, FolderPlus, PanelLeft, Settings } from 'lucide-react'
+import { ChevronDown, ChevronRight, Ellipsis, Folder, SquarePen, Plus, Search, FolderPlus, PanelLeft, PanelLeftClose, Settings } from 'lucide-react'
 import { SourceControlIcon } from '@/components/ui/source-control-icon'
 import { relativeTime } from '../lib/format'
 import { useAnimationReplay } from '../lib/useAnimationReplay'
@@ -20,21 +21,24 @@ import { Kbd } from '@/components/ui/kbd'
 export function SidebarToggle({ className }: { className?: string }): JSX.Element {
   const collapsed = useUi((s) => s.sidebarCollapsed)
   const toggleSidebar = useUi((s) => s.toggleSidebar)
+  // same pairing as the explorer toggle: the plain panel invites, the arrow'd one collapses
+  const Icon = collapsed ? PanelLeft : PanelLeftClose
   return (
     <Button
       variant="ghost"
       size="icon-xs"
       className={cn('no-drag text-muted-foreground', className)}
-      title={collapsed ? 'Show sidebar' : 'Hide sidebar'}
+      title={collapsed ? 'Show sidebar  ⌘B' : 'Hide sidebar  ⌘B'}
       aria-label={collapsed ? 'Show sidebar' : 'Hide sidebar'}
+      aria-pressed={!collapsed}
       onClick={toggleSidebar}
     >
-      <PanelLeft className="size-[15px]" />
+      <Icon className="size-[15px]" />
     </Button>
   )
 }
 
-/** Drag handle on the sidebar's right edge — fixed, outside the overflow-hidden panel so it isn't clipped. */
+/** Drag handle on the sidebar's right edge. */
 function SidebarResizer(): JSX.Element | null {
   const collapsed = useUi((s) => s.sidebarCollapsed)
   const width = useUi((s) => s.sidebarWidth)
@@ -44,61 +48,18 @@ function SidebarResizer(): JSX.Element | null {
 
   if (collapsed) return null
 
-  const startDrag = (e: React.PointerEvent): void => {
-    e.preventDefault()
-    const startX = e.clientX
-    const startWidth = useUi.getState().sidebarWidth
-    setSidebarResizing(true)
-    const prevUserSelect = document.body.style.userSelect
-    document.body.style.userSelect = 'none'
-    document.body.style.cursor = 'col-resize'
-
-    const onMove = (ev: PointerEvent): void => setSidebarWidth(startWidth + ev.clientX - startX)
-    const onUp = (): void => {
-      setSidebarResizing(false)
-      document.body.style.userSelect = prevUserSelect
-      document.body.style.cursor = ''
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
-      window.removeEventListener('pointercancel', onUp)
-    }
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
-    window.addEventListener('pointercancel', onUp)
-  }
-
   return (
-    <div
-      role="separator"
-      aria-orientation="vertical"
-      aria-label="Resize sidebar"
-      aria-valuenow={width}
-      aria-valuemin={SIDEBAR_MIN_WIDTH}
-      aria-valuemax={SIDEBAR_MAX_WIDTH}
-      tabIndex={0}
-      className={cn(
-        // no-drag: the top of the handle overlaps the title-bar drag region
-        'group/resizer no-drag fixed inset-y-0 z-20 w-1.5 cursor-col-resize outline-none',
-        !resizing && 'transition-[left] duration-150 ease-out'
-      )}
-      style={{ left: width - 3 }}
-      onPointerDown={startDrag}
-      onDoubleClick={() => setSidebarWidth(DEFAULT_SIDEBAR_WIDTH)}
-      onKeyDown={(e) => {
-        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
-        e.preventDefault()
-        setSidebarWidth(width + (e.key === 'ArrowLeft' ? -16 : 16))
-      }}
-      title="Drag to resize · double-click to reset"
-    >
-      <div
-        className={cn(
-          'pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-primary/60 opacity-0 transition-opacity duration-100',
-          'group-hover/resizer:opacity-100 group-focus-visible/resizer:opacity-100',
-          resizing && 'opacity-100'
-        )}
-      />
-    </div>
+    <PanelResizer
+      side="left"
+      label="sidebar"
+      width={width}
+      min={SIDEBAR_MIN_WIDTH}
+      max={SIDEBAR_MAX_WIDTH}
+      resizing={resizing}
+      setWidth={setSidebarWidth}
+      setResizing={setSidebarResizing}
+      onReset={() => setSidebarWidth(DEFAULT_SIDEBAR_WIDTH)}
+    />
   )
 }
 

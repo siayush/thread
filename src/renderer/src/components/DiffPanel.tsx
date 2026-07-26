@@ -4,6 +4,7 @@ import { CodeView, type CodeViewHandle } from '@pierre/diffs/react'
 import { fnv1a } from '../lib/hash'
 import { useUi } from '../state/uiStore'
 import { SidebarToggle } from './Sidebar'
+import { ExplorerToggle } from './ExplorerDock'
 import { useDiffData } from '../state/diffStore'
 import type { ThreadDetail } from '@shared/domain'
 import { ArrowLeft, Rows3, Columns2, RefreshCw, ChevronDown, Copy, Check } from 'lucide-react'
@@ -492,6 +493,7 @@ export function DiffPanel({ detail }: { detail: ThreadDetail }): JSX.Element {
           <Button variant="ghost" size="icon-xs" className="text-muted-foreground" title="Refresh" onClick={() => void load(threadId, diffScope)}>
             <RefreshCw className="size-[13px]" />
           </Button>
+          <ExplorerToggle />
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">

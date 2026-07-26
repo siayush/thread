@@ -6,6 +6,7 @@ import { fnv1a } from '../lib/hash'
 import { useServer } from '../state/serverStore'
 import { useUi } from '../state/uiStore'
 import { SidebarToggle } from './Sidebar'
+import { ExplorerToggle } from './ExplorerDock'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -114,6 +115,7 @@ export function FileView({ threadId }: { threadId: string }): JSX.Element {
             </Badge>
           )}
         </span>
+        <ExplorerToggle className="ml-auto" />
       </header>
 
       <div className="min-h-0 flex-1 overflow-hidden">
