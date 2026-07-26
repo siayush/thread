@@ -1,4 +1,4 @@
-import { execFile, execFileSync } from 'node:child_process'
+import { execFile, execFileSync, spawn } from 'node:child_process'
 import { promisify } from 'node:util'
 import { rm } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
@@ -255,6 +255,53 @@ export async function workingSummary(cwd: string): Promise<DiffSummary> {
     deletions += del === '-' ? 0 : Number(del) || 0
   }
   return { isGitRepo: true, files, additions, deletions }
+}
+
+/** A hung git would otherwise leave the caller's promise — and the UI waiting on it — pending forever. */
+const GIT_STDIN_TIMEOUT_MS = 10_000
+
+/**
+ * Run git with NUL-separated paths on stdin and resolve its stdout whatever the
+ * exit code — `check-ignore` exits 1 when nothing matched and 128 outside a repo,
+ * neither of which is an error here. Paths go over stdin rather than argv so a
+ * folder with thousands of entries can't overflow the argument list.
+ */
+function gitStdin(cwd: string, args: string[], input: string): Promise<string> {
+  return new Promise((resolve) => {
+    // stderr ignored, not piped: an undrained pipe would stall the child
+    const child = spawn('git', args, { cwd, env: process.env, stdio: ['pipe', 'pipe', 'ignore'] })
+    let out = ''
+    let settled = false
+    const finish = (value: string): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolve(value)
+    }
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL')
+      finish('')
+    }, GIT_STDIN_TIMEOUT_MS)
+    child.stdout.setEncoding('utf8')
+    child.stdout.on('data', (chunk: string) => {
+      out += chunk
+    })
+    child.on('error', () => finish(''))
+    child.on('close', () => finish(out))
+    child.stdin.on('error', () => {})
+    child.stdin.end(input)
+  })
+}
+
+/**
+ * Which of `paths` (project-relative) git ignores. Tracked paths are never
+ * reported, even when a pattern matches them — check-ignore consults the index
+ * unless told not to. Empty set outside a repo.
+ */
+export async function ignoredPaths(cwd: string, paths: string[]): Promise<Set<string>> {
+  if (paths.length === 0) return new Set()
+  const out = await gitStdin(cwd, ['check-ignore', '-z', '--stdin'], paths.join('\0'))
+  return new Set(out.split('\0').filter(Boolean))
 }
 
 /** Stage / unstage / discard working-tree paths in a single git invocation

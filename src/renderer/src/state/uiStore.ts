@@ -21,6 +21,10 @@ export const SIDEBAR_MIN_WIDTH = 200
 export const SIDEBAR_MAX_WIDTH = 520
 export const DEFAULT_SIDEBAR_WIDTH = 264
 
+export const EXPLORER_MIN_WIDTH = 200
+export const EXPLORER_MAX_WIDTH = 520
+export const DEFAULT_EXPLORER_WIDTH = 258
+
 /** a file reference the chat linked to (path relative to the project, optional line) */
 export interface FileTarget {
   path: string
@@ -34,6 +38,13 @@ interface UiState {
   /** true mid-drag; suppresses the width transitions so the panel tracks the cursor */
   sidebarResizing: boolean
   expandedProjects: Record<string, boolean>
+  /** the file-explorer dock on the right edge */
+  explorerOpen: boolean
+  explorerWidth: number
+  /** true mid-drag; suppresses the width transitions so the dock tracks the cursor */
+  explorerResizing: boolean
+  /** which explorer folders are open, per project: projectId → { relPath: true } */
+  expandedDirs: Record<string, Record<string, boolean>>
   threadView: ThreadView
   /** which file the diff view is focused on; null = all files */
   diffSelectedFile: string | null
@@ -55,6 +66,12 @@ interface UiState {
   setSidebarResizing: (resizing: boolean) => void
   toggleProject: (projectId: string) => void
   setProjectExpanded: (projectId: string, expanded: boolean) => void
+  toggleExplorer: () => void
+  setExplorerOpen: (open: boolean) => void
+  /** clamped to [EXPLORER_MIN_WIDTH, EXPLORER_MAX_WIDTH] */
+  setExplorerWidth: (width: number) => void
+  setExplorerResizing: (resizing: boolean) => void
+  toggleDir: (projectId: string, path: string) => void
   setThreadView: (view: ThreadView) => void
   /** open the diff view for a thread at a given scope, focused on all files */
   openDiff: (threadId: string, scope?: DiffScope) => void
@@ -76,6 +93,10 @@ export const useUi = create<UiState>()(
       sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
       sidebarResizing: false,
       expandedProjects: {},
+      explorerOpen: true,
+      explorerWidth: DEFAULT_EXPLORER_WIDTH,
+      explorerResizing: false,
+      expandedDirs: {},
       threadView: 'chat',
       diffSelectedFile: null,
       diffScope: { kind: 'working' },
@@ -98,6 +119,20 @@ export const useUi = create<UiState>()(
       toggleProject: (projectId) => set((s) => ({ expandedProjects: { ...s.expandedProjects, [projectId]: !(s.expandedProjects[projectId] ?? true) } })),
       setProjectExpanded: (projectId, expanded) => set((s) => ({ expandedProjects: { ...s.expandedProjects, [projectId]: expanded } })),
 
+      toggleExplorer: () => set((s) => ({ explorerOpen: !s.explorerOpen })),
+      setExplorerOpen: (open) => set({ explorerOpen: open }),
+      setExplorerWidth: (width) =>
+        set({ explorerWidth: Math.min(EXPLORER_MAX_WIDTH, Math.max(EXPLORER_MIN_WIDTH, Math.round(width))) }),
+      setExplorerResizing: (resizing) => set({ explorerResizing: resizing }),
+      toggleDir: (projectId, path) =>
+        set((s) => {
+          const dirs = s.expandedDirs[projectId] ?? {}
+          const next = { ...dirs }
+          if (next[path]) delete next[path]
+          else next[path] = true
+          return { expandedDirs: { ...s.expandedDirs, [projectId]: next } }
+        }),
+
       setThreadView: (view) => set({ threadView: view }),
       openDiff: (threadId, scope) =>
         set({ activeThreadId: threadId, threadView: 'diff', diffSelectedFile: null, ...(scope ? { diffScope: scope } : {}) }),
@@ -116,6 +151,9 @@ export const useUi = create<UiState>()(
         sidebarCollapsed: s.sidebarCollapsed,
         sidebarWidth: s.sidebarWidth,
         expandedProjects: s.expandedProjects,
+        explorerOpen: s.explorerOpen,
+        explorerWidth: s.explorerWidth,
+        expandedDirs: s.expandedDirs,
         diffScope: s.diffScope,
         diffView: s.diffView,
         theme: s.theme

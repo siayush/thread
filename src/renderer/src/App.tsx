@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useServer } from './state/serverStore'
 import { useUi } from './state/uiStore'
 import { Sidebar, SidebarToggle } from './components/Sidebar'
+import { ExplorerDock } from './components/ExplorerDock'
 import { ChatView } from './components/ChatView'
 import { CommandPalette } from './components/CommandPalette'
 import { ConfirmDialog } from './components/ConfirmDialog'
@@ -38,7 +39,7 @@ export default function App(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready])
 
-  // global shortcuts: ⌘K → command palette, ⌘B → toggle sidebar
+  // global shortcuts: ⌘K → command palette, ⌘B → toggle sidebar, ⌘⇧E → toggle explorer
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (!(e.metaKey || e.ctrlKey)) return
@@ -49,6 +50,9 @@ export default function App(): JSX.Element {
       } else if (key === 'b') {
         e.preventDefault()
         useUi.getState().toggleSidebar()
+      } else if (key === 'e' && e.shiftKey) {
+        e.preventDefault()
+        useUi.getState().toggleExplorer()
       }
     }
     window.addEventListener('keydown', onKey)
@@ -93,6 +97,7 @@ export default function App(): JSX.Element {
             </div>
           )}
         </main>
+        <ExplorerDock />
         <CommandPalette />
         <ConfirmDialog />
         <SettingsPage />

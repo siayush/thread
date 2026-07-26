@@ -23,6 +23,8 @@ export function registerRpc(engine: Engine): () => void {
         return engine.applyFileAction(params.threadId, params.action, params.paths)
       case 'readProjectFile':
         return engine.readProjectFile(params.threadId, params.path)
+      case 'listDir':
+        return engine.listProjectDir(params.projectId, params.path)
       case 'listModels':
         return { models: mergeCodexAgentModels(await getCodexAgentModels()) }
     }

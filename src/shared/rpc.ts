@@ -23,6 +23,7 @@ export type RpcRequest =
   | { method: 'getDiffSummary'; params: { threadId: string } }
   | { method: 'fileAction'; params: { threadId: string; action: DiffAction; paths: string[] } }
   | { method: 'readProjectFile'; params: { threadId: string; path: string } }
+  | { method: 'listDir'; params: { projectId: string; path: string } }
   | { method: 'listModels'; params: Record<string, never> }
 
 /** result of `readProjectFile`: a project file's text for the in-app viewer */

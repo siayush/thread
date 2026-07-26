@@ -1,14 +1,16 @@
 import { randomUUID } from 'node:crypto'
-import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { basename, relative, resolve } from 'node:path'
 import { readFile, stat } from 'node:fs/promises'
 import type { Command, CommandResult } from '@shared/commands'
 import type { NewEvent, OrchestrationEvent } from '@shared/events'
 import type { ReadFileResult, StreamMessage } from '@shared/rpc'
+import type { ListDirResult } from '@shared/files'
 import { RUNTIME_MODE_TO_PERMISSION, type ApprovalDecision, type ApprovalKind, type InteractionMode, type RuntimeMode } from '@shared/domain'
 import type { DiffAction, DiffResult, DiffScope, DiffSummary } from '@shared/diff'
 import { Db } from './db'
-import { applyEvent, getShellSnapshot, getThreadDetail, getThreadProjectPath } from './projections'
+import { applyEvent, getProject, getShellSnapshot, getThreadDetail, getThreadProjectPath } from './projections'
 import { applyFileAction, isGitRepo, isGitRepoAsync, snapshotWorkingTree, turnDiff, turnDiffStat, workingDiff, workingSummary } from './git'
+import { listDir, resolveInside } from './files'
 import { providerForModel } from './models'
 import { ClaudeAdapter } from './provider/claudeAdapter'
 import { CodexAppServerAdapter } from './provider/codexAppServerAdapter'
@@ -495,8 +497,8 @@ export class Engine implements AgentHost {
     const info = getThreadProjectPath(this.db, threadId)
     if (!info) return { ok: false, path: filePath, error: 'Thread not found' }
     const root = resolve(info.project.folderPath)
-    const abs = resolve(isAbsolute(filePath) ? filePath : join(root, filePath))
-    if (abs !== root && !abs.startsWith(root + sep)) return { ok: false, path: filePath, error: 'File is outside the project folder' }
+    const abs = await resolveInside(root, filePath)
+    if (!abs) return { ok: false, path: filePath, error: 'File is outside the project folder' }
     try {
       const st = await stat(abs)
       if (!st.isFile()) return { ok: false, path: filePath, error: 'Not a file' }
@@ -508,5 +510,13 @@ export class Engine implements AgentHost {
       const notFound = (err as NodeJS.ErrnoException)?.code === 'ENOENT'
       return { ok: false, path: filePath, error: notFound ? 'File not found' : err instanceof Error ? err.message : String(err) }
     }
+  }
+
+  // ---------- file explorer ----------
+  /** One directory of a project's working tree, read lazily as folders open. */
+  async listProjectDir(projectId: string, path: string): Promise<ListDirResult> {
+    const project = getProject(this.db, projectId)
+    if (!project) return { ok: false, path, entries: [], error: 'Project not found' }
+    return listDir(project.folderPath, path)
   }
 }
