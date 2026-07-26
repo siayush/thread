@@ -27,6 +27,12 @@ const FILE_UNSAFE_CSS = `
   --diffs-token-dark-bg: transparent;
   background-color: var(--diffs-bg) !important;
 }
+/* drop the horizontal scrollbar under the code: the gutter var drives
+   ::-webkit-scrollbar's height, so 0 hides the bar without disabling
+   horizontal scrolling (trackpad/shift-wheel still work) */
+[data-file] {
+  --diffs-scrollbar-gutter: 0px;
+}
 `
 
 const FILE_OPTIONS = {
