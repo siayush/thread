@@ -177,8 +177,15 @@ export function SettingsPage(): JSX.Element | null {
           )}
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {/* the usage section holds a chart and tables, so it gets more width */}
-          <div className={cn('mx-auto px-8 pb-16', section === 'usage' ? 'max-w-5xl' : 'max-w-2xl')}>
+          {/* the usage section holds a chart and tables, so it gets more width;
+              keyed by section so switching pages replays the app's slide-in */}
+          <div
+            key={section}
+            className={cn(
+              'mx-auto px-8 pb-16 duration-200 ease-out animate-in fade-in slide-in-from-right-4',
+              section === 'usage' ? 'max-w-5xl' : 'max-w-2xl'
+            )}
+          >
             {section === 'general' && <GeneralSection />}
             {section === 'usage' && <UsageSection />}
             {section === 'about' && <AboutSection />}
