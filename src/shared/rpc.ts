@@ -9,6 +9,7 @@ import type { Command } from './commands'
 import type { OrchestrationEvent } from './events'
 import type { ShellSnapshot, ThreadDetail } from './domain'
 import type { DiffAction, DiffScope } from './diff'
+import type { UsageSummaryInput } from './usage'
 
 export const RpcChannels = {
   request: 'rpc:request',
@@ -25,6 +26,7 @@ export type RpcRequest =
   | { method: 'readProjectFile'; params: { threadId: string; path: string } }
   | { method: 'listDir'; params: { projectId: string; path: string } }
   | { method: 'listModels'; params: Record<string, never> }
+  | { method: 'getUsage'; params: UsageSummaryInput }
 
 /** result of `readProjectFile`: a project file's text for the in-app viewer */
 export interface ReadFileResult {

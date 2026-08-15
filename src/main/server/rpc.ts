@@ -3,11 +3,12 @@ import { RpcChannels, type RpcRequestMethod, type StreamFrame, type StreamMessag
 import type { Engine } from './engine'
 import { mergeCodexAgentModels } from './models'
 import { getCodexAgentModels } from './provider/codexModelList'
+import type { UsageService } from './usage/usageService'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 /** Registers the renderer↔engine RPC on Electron IPC. Returns a disposer. */
-export function registerRpc(engine: Engine): () => void {
+export function registerRpc(engine: Engine, usage: UsageService): () => void {
   // active subscriptions per renderer, so a closed window is cleaned up
   const subsBySender = new Map<number, Map<number, () => void>>()
 
@@ -27,6 +28,8 @@ export function registerRpc(engine: Engine): () => void {
         return engine.listProjectDir(params.projectId, params.path)
       case 'listModels':
         return { models: mergeCodexAgentModels(await getCodexAgentModels()) }
+      case 'getUsage':
+        return usage.readSummary(params)
     }
   })
 

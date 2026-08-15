@@ -17,6 +17,17 @@
       opacity: 0;
     }
   }
+
+  /* left-to-right wipe for the usage chart when its window changes */
+  --animate-chart-reveal: chart-reveal 600ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  @keyframes chart-reveal {
+    from {
+      clip-path: inset(0 100% 0 0);
+    }
+    to {
+      clip-path: inset(0 0 0 0);
+    }
+  }
 }
 
 @theme inline {

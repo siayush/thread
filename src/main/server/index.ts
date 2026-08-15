@@ -1,7 +1,9 @@
+import { dirname } from 'node:path'
 import { Db } from './db'
 import { Engine } from './engine'
 import { registerRpc } from './rpc'
 import { PROJECTION_VERSION, rebuildProjections } from './projections'
+import { UsageService } from './usage/usageService'
 
 export interface Server {
   engine: Engine
@@ -21,7 +23,9 @@ export function startServer(dbPath: string): Server {
   const engine = new Engine(db)
   engine.recoverFromRestart()
 
-  const unregisterRpc = registerRpc(engine)
+  // usage snapshots (LiteLLM rate table) live next to the DB in userData
+  const usage = new UsageService(dirname(dbPath))
+  const unregisterRpc = registerRpc(engine, usage)
   return {
     engine,
     dispose: () => {
