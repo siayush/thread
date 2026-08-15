@@ -213,8 +213,8 @@ function EmptyState({ threadId }: { threadId: string }): JSX.Element {
 
 /**
  * The tabbed workspace docked opposite the thread list: threads left,
- * conversation centre, diff/files right — a per-thread tab strip over a surface switch — with the diff and files
- * surfaces.
+ * conversation centre, diff/files right — a per-thread tab strip over a
+ * surface switch.
  */
 export function RightPanel(): JSX.Element | null {
   const activeThreadId = useUi((s) => s.activeThreadId)

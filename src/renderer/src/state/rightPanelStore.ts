@@ -4,9 +4,9 @@ import type { DiffScope } from '@shared/diff'
 import { useUi } from './uiStore'
 
 /**
- * The right panel is a tabbed workspace beside the chat:
- * an ordered list of surfaces (tabs) plus one active id, scoped
- * per thread. `diff` and `files` are singletons — their id is the kind, so
+ * The right panel is a tabbed workspace beside the chat: an ordered list of
+ * surfaces (tabs) plus one active id, scoped per thread. `diff` and `files`
+ * are singletons — their id is the kind, so
  * opening one twice is idempotent — while each open file gets its own
  * `file:<path>` surface, so re-opening a path re-activates the existing tab
  * instead of duplicating it.

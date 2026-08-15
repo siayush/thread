@@ -18,11 +18,11 @@ import { Input } from '@/components/ui/input'
 import { Kbd } from '@/components/ui/kbd'
 
 /**
- * The sidebar toggle, pinned in the window's top-left titlebar slot:
- * it keeps the exact same spot whether the
- * sidebar is open (floating over its header) or closed (floating over the main
- * pane). `--controls-left` is set by App — right of the macOS traffic lights
- * when they're visible, flush left in fullscreen where they disappear.
+ * The sidebar toggle, pinned in the window's top-left titlebar slot: it keeps
+ * the exact same spot whether the sidebar is open (floating over its header)
+ * or closed (floating over the main pane). `--controls-left` is set by App —
+ * right of the macOS traffic lights when they're visible, flush left in
+ * fullscreen where they disappear.
  */
 export function SidebarControl(): JSX.Element {
   const collapsed = useUi((s) => s.sidebarCollapsed)

@@ -5,6 +5,7 @@ import { openThreadDiff } from '../state/rightPanelStore'
 import { MessagesTimeline } from './MessagesTimeline'
 import { Composer } from './Composer'
 import { Badge } from '@/components/ui/badge'
+import { Folder } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { RightPanelToggle } from './RightPanel'
 import { useAnimationReplay } from '../lib/useAnimationReplay'
@@ -37,9 +38,18 @@ export function ChatView({ threadId }: { threadId: string }): JSX.Element {
 
   return (
     <div key="chat" ref={paneRef} className="flex min-h-0 flex-1 flex-col duration-200 ease-out animate-in fade-in slide-in-from-left-4">
-      <header className={cn('drag-region flex h-13 items-center justify-between border-b pr-3.5 transition-[padding] duration-150 ease-out', sidebarCollapsed ? 'pl-[calc(var(--controls-left)+2rem)]' : 'pl-5')}>
-        <div className="no-drag flex min-w-0 items-center gap-2.5">
-          <span className="text-[13.5px] font-semibold whitespace-nowrap">{thread.title}</span>
+      {/* no bottom border — the header blends into the transcript */}
+      <header className={cn('drag-region flex h-13 items-center justify-between pr-3.5 transition-[padding] duration-150 ease-out', sidebarCollapsed ? 'pl-[calc(var(--controls-left)+2rem)]' : 'pl-5')}>
+        <div className="no-drag flex min-w-0 items-center gap-2 text-[13.5px]">
+          {/* project / thread breadcrumb */}
+          {project && (
+            <>
+              <Folder className="size-[14px] shrink-0 text-muted-foreground" />
+              <span className="shrink-0 text-muted-foreground">{project.name}</span>
+              <span className="shrink-0 text-muted-foreground/50">/</span>
+            </>
+          )}
+          <span className="truncate font-semibold">{thread.title}</span>
         </div>
         <div className="no-drag flex items-center gap-1.5">
           {project && !project.isGitRepo && (
