@@ -145,7 +145,7 @@ export function SettingsPage(): JSX.Element | null {
             )
           })}
         </nav>
-        <div className="border-t p-2">
+        <div className="p-2">
           <Button
             variant="ghost"
             className="h-auto w-full justify-start gap-2 px-2.5 py-2 text-[13px] font-normal text-muted-foreground"
