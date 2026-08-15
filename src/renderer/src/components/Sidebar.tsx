@@ -483,14 +483,15 @@ export function Sidebar(): JSX.Element {
         </div>
       )}
 
-      <div className="mt-auto border-t p-2">
+      <div className="mt-auto p-2">
         <Button
           variant="ghost"
-          className="h-auto w-full justify-start gap-2 px-2 py-1.5 text-[13px] font-normal text-muted-foreground"
+          className="size-8 p-0 text-muted-foreground"
           onClick={() => setSettingsOpen(true)}
+          aria-label="Settings"
+          title="Settings"
         >
           <Settings className="size-[15px]" />
-          <span className="flex-1 text-left">Settings</span>
         </Button>
       </div>
       </aside>
