@@ -132,9 +132,9 @@ function FileContent({
 }
 
 /**
- * The files workspace, shared by the `files` and `file` surfaces:
- * the tree fills the whole panel while nothing
- * is open, and docks as a rail beside the open file otherwise.
+ * The files workspace, shared by the `files` and `file` surfaces: the tree
+ * fills the whole panel while nothing is open, and docks as a rail beside the
+ * open file otherwise.
  */
 export function FilePreviewPanel({
   threadId,
