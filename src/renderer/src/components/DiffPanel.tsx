@@ -3,11 +3,9 @@ import { parsePatchFiles, type CodeViewDiffItem, type CodeViewItem } from '@pier
 import { CodeView, type CodeViewHandle } from '@pierre/diffs/react'
 import { fnv1a } from '../lib/hash'
 import { useUi } from '../state/uiStore'
-import { SidebarToggle } from './Sidebar'
-import { ExplorerToggle } from './ExplorerDock'
 import { useDiffData } from '../state/diffStore'
 import type { ThreadDetail } from '@shared/domain'
-import { ArrowLeft, Rows3, Columns2, RefreshCw, ChevronDown, Copy, Check } from 'lucide-react'
+import { Rows3, Columns2, RefreshCw, ChevronDown, Copy, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -346,8 +344,6 @@ function PierreDiff({
 export function DiffPanel({ detail }: { detail: ThreadDetail }): JSX.Element {
   const diffScope = useUi((s) => s.diffScope)
   const setDiffScope = useUi((s) => s.setDiffScope)
-  const setThreadView = useUi((s) => s.setThreadView)
-  const sidebarCollapsed = useUi((s) => s.sidebarCollapsed)
   const diffView = useUi((s) => s.diffView)
   const setDiffView = useUi((s) => s.setDiffView)
   const selectedFile = useUi((s) => s.diffSelectedFile)
@@ -430,16 +426,7 @@ export function DiffPanel({ detail }: { detail: ThreadDetail }): JSX.Element {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className={cn('drag-region flex h-13 items-center gap-2.5 border-b pr-3 transition-[padding] duration-150 ease-out', sidebarCollapsed ? 'pl-titlebar' : 'pl-3')}>
-        {sidebarCollapsed && <SidebarToggle />}
-        <Button
-          variant="ghost"
-          size="sm"
-          className="no-drag gap-1.5 text-muted-foreground hover:text-foreground"
-          onClick={() => setThreadView('chat')}
-        >
-          <ArrowLeft className="size-[14px]" /> Back
-        </Button>
+      <div className="flex h-11 shrink-0 items-center gap-2.5 px-2.5">
         <Select
           items={scopeItems}
           value={scopeKey}
@@ -447,7 +434,7 @@ export function DiffPanel({ detail }: { detail: ThreadDetail }): JSX.Element {
         >
           <SelectTrigger
             size="sm"
-            className="no-drag h-auto gap-1.5 rounded-lg border-border bg-muted px-2 py-1 text-[11.5px] text-foreground/80 dark:bg-muted dark:hover:bg-accent"
+            className="h-auto gap-1.5 rounded-lg border-border bg-muted px-2 py-1 text-[11.5px] text-foreground/80 dark:bg-muted dark:hover:bg-accent"
           >
             <SelectValue />
           </SelectTrigger>
@@ -467,7 +454,7 @@ export function DiffPanel({ detail }: { detail: ThreadDetail }): JSX.Element {
             <DiffStat additions={result.additions} deletions={result.deletions} />
           </span>
         )}
-        <div className="no-drag ml-auto flex items-center gap-2.5">
+        <div className="ml-auto flex items-center gap-2.5">
           <div className="flex items-center gap-0.5 rounded-lg bg-muted p-0.5">
             <Button
               variant="ghost"
@@ -493,7 +480,6 @@ export function DiffPanel({ detail }: { detail: ThreadDetail }): JSX.Element {
           <Button variant="ghost" size="icon-xs" className="text-muted-foreground" title="Refresh" onClick={() => void load(threadId, diffScope)}>
             <RefreshCw className="size-[13px]" />
           </Button>
-          <ExplorerToggle />
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">

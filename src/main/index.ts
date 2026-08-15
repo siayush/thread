@@ -33,6 +33,11 @@ function createWindow(): void {
   })
 
   mainWindow.on('ready-to-show', () => mainWindow?.show())
+  // fullscreen hides the macOS traffic lights — the renderer shifts the
+  // titlebar controls (sidebar toggle) into the freed space, t3-code style
+  const sendFullScreen = (value: boolean): void => mainWindow?.webContents.send(IpcChannels.fullScreenChanged, value)
+  mainWindow.on('enter-full-screen', () => sendFullScreen(true))
+  mainWindow.on('leave-full-screen', () => sendFullScreen(false))
   // never leave the module-level ref pointing at a destroyed window (macOS keeps
   // the app alive after close; a dialog against a destroyed window throws)
   mainWindow.on('closed', () => {
@@ -54,6 +59,8 @@ function registerIpc(): void {
   })
 
   ipcMain.handle(IpcChannels.openExternal, (_e, url: string) => shell.openExternal(url))
+
+  ipcMain.handle(IpcChannels.getFullScreen, () => mainWindow?.isFullScreen() ?? false)
 
   ipcMain.handle(IpcChannels.showContextMenu, (event, items: ContextMenuItem[]): Promise<string | null> => {
     return new Promise((resolve) => {
