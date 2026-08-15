@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useServer } from '../state/serverStore'
 import { DEFAULT_SIDEBAR_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH, isProjectExpanded, useUi } from '../state/uiStore'
+import { openThreadDiff } from '../state/rightPanelStore'
 import { useDiffSummary } from '../state/diffStore'
-import { FileChangesView } from './FileChangesView'
 import { PanelResizer } from './PanelResizer'
 import type { Project, ThreadSummary } from '@shared/domain'
 import { ChevronDown, ChevronRight, Ellipsis, Folder, SquarePen, Plus, Search, FolderPlus, PanelLeft, PanelLeftClose, Settings } from 'lucide-react'
@@ -17,24 +17,35 @@ import { Spinner } from '@/components/ui/spinner'
 import { Input } from '@/components/ui/input'
 import { Kbd } from '@/components/ui/kbd'
 
-/** Toggles the sidebar; shown in the sidebar header when open, in the main-pane headers when collapsed. */
-export function SidebarToggle({ className }: { className?: string }): JSX.Element {
+/**
+ * The sidebar toggle, pinned in the window's top-left titlebar slot:
+ * it keeps the exact same spot whether the
+ * sidebar is open (floating over its header) or closed (floating over the main
+ * pane). `--controls-left` is set by App — right of the macOS traffic lights
+ * when they're visible, flush left in fullscreen where they disappear.
+ */
+export function SidebarControl(): JSX.Element {
   const collapsed = useUi((s) => s.sidebarCollapsed)
   const toggleSidebar = useUi((s) => s.toggleSidebar)
-  // same pairing as the explorer toggle: the plain panel invites, the arrow'd one collapses
+  // the plain panel invites, the arrow'd one collapses
   const Icon = collapsed ? PanelLeft : PanelLeftClose
   return (
-    <Button
-      variant="ghost"
-      size="icon-xs"
-      className={cn('no-drag text-muted-foreground', className)}
-      title={collapsed ? 'Show sidebar  ⌘B' : 'Hide sidebar  ⌘B'}
-      aria-label={collapsed ? 'Show sidebar' : 'Hide sidebar'}
-      aria-pressed={!collapsed}
-      onClick={toggleSidebar}
-    >
-      <Icon className="size-[15px]" />
-    </Button>
+    // no-drag on the wrapper as well: the headers underneath are drag regions,
+    // and Electron resolves app-region rects in DOM order — this control renders
+    // last so its no-drag hole wins over the drag rects below it
+    <div className="no-drag fixed top-0 z-30 flex h-13 items-center" style={{ left: 'var(--controls-left)' }}>
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        className="no-drag text-muted-foreground"
+        title={collapsed ? 'Show sidebar  ⌘B' : 'Hide sidebar  ⌘B'}
+        aria-label={collapsed ? 'Show sidebar' : 'Hide sidebar'}
+        aria-pressed={!collapsed}
+        onClick={toggleSidebar}
+      >
+        <Icon className="size-[15px]" />
+      </Button>
+    </div>
   )
 }
 
@@ -105,7 +116,6 @@ function ProjectRow({ project }: { project: Project }): JSX.Element {
   const expandedMap = useUi((s) => s.expandedProjects)
   const toggleProject = useUi((s) => s.toggleProject)
   const openTab = useUi((s) => s.openTab)
-  const openDiff = useUi((s) => s.openDiff)
   const dispatch = useServer((s) => s.dispatch)
   const changeCount = useDiffSummary((s) => s.byProject[project.id]?.files ?? 0)
   const fetchSummary = useDiffSummary((s) => s.fetch)
@@ -293,7 +303,7 @@ function ProjectRow({ project }: { project: Project }): JSX.Element {
                       t.id === activeThreadId ? 'inline-flex' : 'hidden group-hover/thread:inline-flex'
                     )}
                     title="View file changes"
-                    onClick={(e) => (e.stopPropagation(), openDiff(t.id))}
+                    onClick={(e) => (e.stopPropagation(), openThreadDiff(t.id))}
                   >
                     <SourceControlIcon className="size-[13px]" />
                   </Button>
@@ -392,13 +402,10 @@ export function Sidebar(): JSX.Element {
   const openTab = useUi((s) => s.openTab)
   const setCommandPaletteOpen = useUi((s) => s.setCommandPaletteOpen)
   const setSettingsOpen = useUi((s) => s.setSettingsOpen)
-  const threadView = useUi((s) => s.threadView)
-  const activeThreadId = useUi((s) => s.activeThreadId)
   const collapsed = useUi((s) => s.sidebarCollapsed)
   const width = useUi((s) => s.sidebarWidth)
   const resizing = useUi((s) => s.sidebarResizing)
   const settingsOpen = useUi((s) => s.settingsOpen)
-  const diffMode = threadView === 'diff' && !!activeThreadId
   const listRef = useAnimationReplay<HTMLDivElement>(settingsOpen)
 
   const addProject = async (): Promise<void> => {
@@ -434,54 +441,50 @@ export function Sidebar(): JSX.Element {
         )}
         style={{ width }}
       >
-      <div className="drag-region flex h-13 items-center gap-1 pr-2 pl-titlebar">
-        <span className="no-drag flex flex-1 items-center gap-1.5 overflow-hidden">
-          <span className="text-sm font-semibold tracking-tight text-foreground">Thread</span>
+      {/* the fixed SidebarControl floats at --controls-left; the wordmark clears it */}
+      <div className="drag-region flex h-13 items-center pr-2 pl-[calc(var(--controls-left)+2rem)] transition-[padding] duration-150 ease-out">
+        <span className="no-drag flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
+          <span className="truncate text-sm font-semibold tracking-tight text-foreground">Thread</span>
         </span>
-        <SidebarToggle />
       </div>
 
-      {diffMode ? (
-        <FileChangesView />
-      ) : (
-        <div ref={listRef} className="flex min-h-0 flex-1 flex-col duration-200 ease-out animate-in fade-in slide-in-from-left-4">
-          <Button
-            variant="ghost"
-            className="mx-2 my-1 h-auto justify-start gap-2 px-2 py-1.5 text-[13px] font-normal text-muted-foreground"
-            onClick={() => setCommandPaletteOpen(true)}
-          >
-            <Search className="size-[13px]" />
-            <span className="flex-1 text-left">Search</span>
-            <Kbd>⌘K</Kbd>
-          </Button>
+      <div ref={listRef} className="flex min-h-0 flex-1 flex-col duration-200 ease-out animate-in fade-in slide-in-from-left-4">
+        <Button
+          variant="ghost"
+          className="mx-2 my-1 h-auto justify-start gap-2 px-2 py-1.5 text-[13px] font-normal text-muted-foreground"
+          onClick={() => setCommandPaletteOpen(true)}
+        >
+          <Search className="size-[13px]" />
+          <span className="flex-1 text-left">Search</span>
+          <Kbd>⌘K</Kbd>
+        </Button>
 
-          <NeedsYouSection />
+        <NeedsYouSection />
 
-          <div className="flex items-center justify-between px-3 pt-2 pb-1 text-[11px] font-medium tracking-wider text-muted-foreground/75 uppercase">
-            <span>Projects</span>
-            <div className="flex items-center gap-0.5">
-              <Button variant="ghost" size="icon-xs" className="text-muted-foreground" title="Add project" onClick={() => void addProject()}>
-                <FolderPlus className="size-3.5" />
-              </Button>
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-y-auto px-2 pb-3">
-            {projects.length === 0 ? (
-              <Button
-                variant="ghost"
-                className="mx-2 my-6 flex h-auto w-[calc(100%-16px)] flex-col items-center gap-2 rounded-xl border border-dashed border-input p-5 text-[12.5px] font-normal text-muted-foreground dark:hover:bg-muted"
-                onClick={() => void addProject()}
-              >
-                <FolderPlus className="size-4" />
-                Add your first project
-              </Button>
-            ) : (
-              projects.map((p) => <ProjectRow key={p.id} project={p} />)
-            )}
+        <div className="flex items-center justify-between px-3 pt-2 pb-1 text-[11px] font-medium tracking-wider text-muted-foreground/75 uppercase">
+          <span>Projects</span>
+          <div className="flex items-center gap-0.5">
+            <Button variant="ghost" size="icon-xs" className="text-muted-foreground" title="Add project" onClick={() => void addProject()}>
+              <FolderPlus className="size-3.5" />
+            </Button>
           </div>
         </div>
-      )}
+
+        <div className="flex-1 overflow-y-auto px-2 pb-3">
+          {projects.length === 0 ? (
+            <Button
+              variant="ghost"
+              className="mx-2 my-6 flex h-auto w-[calc(100%-16px)] flex-col items-center gap-2 rounded-xl border border-dashed border-input p-5 text-[12.5px] font-normal text-muted-foreground dark:hover:bg-muted"
+              onClick={() => void addProject()}
+            >
+              <FolderPlus className="size-4" />
+              Add your first project
+            </Button>
+          ) : (
+            projects.map((p) => <ProjectRow key={p.id} project={p} />)
+          )}
+        </div>
+      </div>
 
       <div className="mt-auto p-2">
         <Button

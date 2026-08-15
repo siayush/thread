@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo, useRef } from 'react'
 import type { DirEntry } from '@shared/files'
 import { ChevronRight, File, Folder } from 'lucide-react'
 import { useUi, useComposerDraft } from '../state/uiStore'
+import { useRightPanel } from '../state/rightPanelStore'
 import { useServer } from '../state/serverStore'
 import { useExplorer } from '../state/explorerStore'
 import { cn } from '@/lib/utils'
@@ -47,17 +48,20 @@ const Row = memo(function Row({ ctx, entry, depth }: { ctx: TreeCtx; entry: DirE
   // on every toggle and would re-render every row in the tree
   const expanded = useUi((s) => isDir && !!s.expandedDirs[ctx.projectId]?.[entry.path])
   const toggleDir = useUi((s) => s.toggleDir)
-  const openFile = useUi((s) => s.openFile)
-  const setThreadView = useUi((s) => s.setThreadView)
-  const threadView = useUi((s) => s.threadView)
-  const fileTarget = useUi((s) => s.fileTarget)
+  const openFile = useRightPanel((s) => s.openFile)
   const loadDir = useExplorer((s) => s.loadDir)
 
-  const selected = !isDir && threadView === 'file' && fileTarget?.path === entry.path
+  // a boolean again: selected ⇔ the panel's active surface is this file's tab
+  const selected = useRightPanel((s) => {
+    if (isDir) return false
+    const panel = s.byThread[ctx.threadId]
+    const active = panel?.surfaces.find((sf) => sf.id === panel.activeSurfaceId)
+    return active?.kind === 'file' && active.path === entry.path
+  })
 
   const open = (): void => {
     if (!isDir) {
-      openFile(ctx.threadId, { path: entry.path, line: null })
+      openFile(ctx.threadId, entry.path, null)
       return
     }
     toggleDir(ctx.projectId, entry.path)
@@ -75,8 +79,6 @@ const Row = memo(function Row({ ctx, entry, depth }: { ctx: TreeCtx; entry: DirE
     } else if (picked === 'insert') {
       const draft = useComposerDraft.getState().drafts[ctx.threadId] ?? ''
       useComposerDraft.getState().set(ctx.threadId, draft ? `${draft.replace(/\s+$/, '')} ${entry.path} ` : `${entry.path} `)
-      // the composer only exists in the chat view — inserting anywhere else would look like nothing happened
-      setThreadView('chat')
     } else if (picked === 'copy') {
       void navigator.clipboard.writeText(entry.path)
     }

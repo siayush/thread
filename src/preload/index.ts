@@ -8,6 +8,10 @@ const native = {
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke(IpcChannels.openExternal, url),
   showContextMenu: (items: ContextMenuItem[]): Promise<string | null> =>
     ipcRenderer.invoke(IpcChannels.showContextMenu, items),
+  isFullScreen: (): Promise<boolean> => ipcRenderer.invoke(IpcChannels.getFullScreen),
+  onFullScreenChange: (cb: (fullscreen: boolean) => void): void => {
+    ipcRenderer.on(IpcChannels.fullScreenChanged, (_e, value: boolean) => cb(value))
+  },
 
   rpc: {
     request: (method: string, params: unknown): Promise<unknown> => ipcRenderer.invoke(RpcChannels.request, method, params),
