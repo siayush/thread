@@ -3,13 +3,15 @@ import { useUi, THEMES, DEFAULT_THEME, DEFAULT_DIFF_VIEW, type ThemeId } from '.
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { ArrowLeft, Info, RotateCcw, SlidersHorizontal } from 'lucide-react'
+import { ArrowLeft, ChartNoAxesColumn, ChevronRight, Info, RotateCcw, SlidersHorizontal } from 'lucide-react'
 import appIcon from '@resources/icon.png'
+import { UsageSection } from './usage/UsageSection'
 
-type SectionId = 'general' | 'about'
+type SectionId = 'general' | 'usage' | 'about'
 
 const NAV: { id: SectionId; label: string; icon: typeof SlidersHorizontal }[] = [
   { id: 'general', label: 'General', icon: SlidersHorizontal },
+  { id: 'usage', label: 'Usage', icon: ChartNoAxesColumn },
   { id: 'about', label: 'About', icon: Info }
 ]
 
@@ -157,16 +159,28 @@ export function SettingsPage(): JSX.Element | null {
 
       {/* content */}
       <div className="flex min-w-0 flex-1 flex-col duration-200 ease-out animate-in fade-in slide-in-from-right-4">
-        <div className="drag-region flex h-13 items-center justify-end pr-5 pl-5">
-          <Button variant="ghost" size="sm" className="no-drag gap-1.5 text-muted-foreground" onClick={restoreDefaults}>
-            <RotateCcw className="size-[13px]" />
-            Restore defaults
-          </Button>
+        {/* the section name lives in the header as a breadcrumb, not as an
+            in-page heading — same layout as the rest of the app's title bars */}
+        <div className="drag-region flex h-13 items-center justify-between pr-5 pl-5">
+          <nav aria-label="Settings breadcrumb" className="flex min-w-0 items-center gap-1 text-sm font-medium">
+            <span className="shrink-0 text-muted-foreground">Settings</span>
+            <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+            <span aria-current="page" className="truncate text-foreground">
+              {active.label}
+            </span>
+          </nav>
+          {section === 'general' && (
+            <Button variant="ghost" size="sm" className="no-drag gap-1.5 text-muted-foreground" onClick={restoreDefaults}>
+              <RotateCcw className="size-[13px]" />
+              Restore defaults
+            </Button>
+          )}
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-2xl px-8 pb-16">
-            <h1 className="pt-2 pb-2 text-2xl font-semibold tracking-tight text-foreground">{active.label}</h1>
+          {/* the usage section holds a chart and tables, so it gets more width */}
+          <div className={cn('mx-auto px-8 pb-16', section === 'usage' ? 'max-w-5xl' : 'max-w-2xl')}>
             {section === 'general' && <GeneralSection />}
+            {section === 'usage' && <UsageSection />}
             {section === 'about' && <AboutSection />}
           </div>
         </div>
