@@ -2,7 +2,7 @@ import { useState, type KeyboardEvent } from 'react'
 import { useServer } from '../state/serverStore'
 import { useComposerDraft } from '../state/uiStore'
 import type { ApprovalDecision, PendingApproval, RuntimeMode, Thread } from '@shared/domain'
-import { TriangleAlert, Lock, SquarePen, LockOpen, Ruler, Bot, Square, ArrowUp, Brain, type LucideIcon } from 'lucide-react'
+import { TriangleAlert, Lock, SquarePen, LockOpen, Ruler, Bot, Square, ArrowUp, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -15,8 +15,12 @@ const RUNTIME_LABELS: Record<RuntimeMode, { label: string; icon: LucideIcon }> =
   'full-access': { label: 'Full access', icon: LockOpen }
 }
 
+/** Footer pill: transparent ghost control that fills on hover. */
 const SELECT_TRIGGER_CLS =
-  'h-auto gap-[5px] rounded-lg border-border bg-muted px-2 py-1 text-[11.5px] text-muted-foreground hover:text-foreground/80 dark:bg-muted dark:hover:bg-accent'
+  'h-7 gap-1.5 rounded-lg border-transparent bg-transparent px-2.5 text-[12px] font-medium text-muted-foreground shadow-none hover:bg-accent hover:text-foreground dark:bg-transparent dark:hover:bg-accent'
+
+/** Thin vertical divider between footer pill groups. */
+const PillSeparator = (): JSX.Element => <div aria-hidden className="mx-0.5 h-4 w-px shrink-0 bg-border" />
 
 /** Human labels for effort levels; unknown values are Title-cased. */
 const EFFORT_LABELS: Record<string, string> = {
@@ -47,7 +51,7 @@ function ApprovalPanel({ threadId, approval }: { threadId: string; approval: Pen
     void dispatch({ type: 'approval.respond', threadId, requestId: approval.id, decision })
   }
   return (
-    <div className="m-1 mb-2 rounded-xl border border-amber/35 bg-amber/8 px-3 py-2.5">
+    <div className="mx-2 mt-2 rounded-xl border border-amber/35 bg-amber/8 px-3 py-2.5">
       <div className="flex items-center gap-[7px] text-xs text-amber">
         <TriangleAlert className="size-[13px] shrink-0" /> Permission required — <b>{approval.toolName}</b>
       </div>
@@ -96,6 +100,7 @@ export function Composer({ thread }: { thread: Thread }): JSX.Element {
   const text = drafts[thread.id] ?? ''
   const running = thread.status === 'running'
   const pending = detail?.pendingApprovals ?? []
+  const isNewThread = (detail?.turns.length ?? 0) === 0
 
   const currentModel = models.find((m) => (thread.model ? m.value === thread.model : m.value === 'default'))
   const reasoningItems = reasoningItemsFor(currentModel?.reasoningEfforts)
@@ -138,15 +143,17 @@ export function Composer({ thread }: { thread: Thread }): JSX.Element {
           <TriangleAlert className="size-[13px] shrink-0" /> {sendError ?? thread.lastError}
         </div>
       )}
-      <div className="rounded-[18px] border border-input bg-card/70 p-1.5 shadow-[0_18px_48px_-24px_rgba(0,0,0,0.6)] backdrop-blur-xl focus-within:border-primary/45">
+      <div className="rounded-[22px] border border-white/[0.05] bg-card/80 shadow-[0_12px_28px_-18px_rgba(0,0,0,0.5),inset_0_1px_rgba(255,255,255,0.03)] backdrop-blur-[16px] backdrop-saturate-[1.08]">
         {pending.length > 0 && <ApprovalPanel threadId={thread.id} approval={pending[0]} />}
 
         <Textarea
-          className="max-h-[220px] min-h-0 resize-none rounded-none border-none bg-transparent px-2.5 py-2 text-[13px] shadow-none focus-visible:border-transparent focus-visible:ring-0 disabled:bg-transparent md:text-[13px] dark:bg-transparent dark:disabled:bg-transparent"
+          className="max-h-[200px] min-h-[70px] resize-none rounded-none border-none bg-transparent px-4 pt-3.5 pb-2 text-[13px] leading-relaxed shadow-none focus-visible:border-transparent focus-visible:ring-0 disabled:bg-transparent md:text-[13px] dark:bg-transparent dark:disabled:bg-transparent"
           placeholder={
             thread.interactionMode === 'plan'
-              ? 'Plan mode — describe what you want to plan…'
-              : 'Message the agent…  (Enter to send, Shift+Enter for newline, Shift+Tab to toggle Plan)'
+              ? 'Describe what you want to plan…'
+              : isNewThread
+                ? 'Describe what to build'
+                : 'Ask for follow-up changes'
           }
           value={text}
           onChange={(e) => setDraft(thread.id, e.target.value)}
@@ -155,9 +162,35 @@ export function Composer({ thread }: { thread: Thread }): JSX.Element {
           disabled={pending.length > 0}
         />
 
-        <div className="flex items-center justify-between gap-2 px-1 pt-1 pb-0.5">
-          <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex items-center justify-between gap-2 px-3 pb-3">
+          <div className="-ml-1 flex min-w-0 flex-1 items-center gap-1">
             <ModelPicker thread={thread} />
+
+            {hasReasoning && (
+              <>
+                <PillSeparator />
+                <Select
+                  items={reasoningItems}
+                  value={thread.reasoningEffort && reasoningItems[thread.reasoningEffort] ? thread.reasoningEffort : 'default'}
+                  onValueChange={(value) =>
+                    void dispatch({ type: 'thread.setConfig', threadId: thread.id, reasoningEffort: value === 'default' ? null : value })
+                  }
+                >
+                  <SelectTrigger size="sm" className={SELECT_TRIGGER_CLS} title="Reasoning effort">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.keys(reasoningItems).map((key) => (
+                      <SelectItem key={key} value={key} className="text-xs">
+                        {reasoningItems[key]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
+            )}
+
+            <PillSeparator />
 
             <Select
               items={runtimeItems}
@@ -167,7 +200,7 @@ export function Composer({ thread }: { thread: Thread }): JSX.Element {
               }
             >
               <SelectTrigger size="sm" className={SELECT_TRIGGER_CLS}>
-                <RuntimeIcon className="size-[13px]" />
+                <RuntimeIcon className="size-[14px]" />
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -179,42 +212,20 @@ export function Composer({ thread }: { thread: Thread }): JSX.Element {
               </SelectContent>
             </Select>
 
-            {hasReasoning && (
-              <Select
-                items={reasoningItems}
-                value={thread.reasoningEffort && reasoningItems[thread.reasoningEffort] ? thread.reasoningEffort : 'default'}
-                onValueChange={(value) =>
-                  void dispatch({ type: 'thread.setConfig', threadId: thread.id, reasoningEffort: value === 'default' ? null : value })
-                }
-              >
-                <SelectTrigger size="sm" className={SELECT_TRIGGER_CLS} title="Reasoning effort">
-                  <Brain className="size-[13px]" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Object.keys(reasoningItems).map((key) => (
-                    <SelectItem key={key} value={key} className="text-xs">
-                      {reasoningItems[key]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
               className={cn(
-                'h-auto gap-[5px] rounded-lg bg-muted px-2.5 py-[5px] text-[11.5px] font-normal text-foreground/80 dark:border-border dark:bg-muted dark:hover:bg-accent',
+                'h-7 shrink-0 gap-1.5 rounded-lg px-2.5 text-[12px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground dark:hover:bg-accent',
                 thread.interactionMode === 'plan' &&
-                  'border-sky/40 bg-sky/10 text-sky hover:text-sky dark:border-sky/40 dark:bg-sky/10 dark:hover:bg-sky/15'
+                  'bg-sky/10 text-sky hover:bg-sky/15 hover:text-sky dark:hover:bg-sky/15'
               )}
               title="Toggle Plan / Build (Shift+Tab)"
               onClick={() =>
                 void dispatch({ type: 'thread.setConfig', threadId: thread.id, interactionMode: thread.interactionMode === 'plan' ? 'build' : 'plan' })
               }
             >
-              {thread.interactionMode === 'plan' ? <Ruler className="size-[13px]" /> : <Bot className="size-[13px]" />}
+              {thread.interactionMode === 'plan' ? <Ruler className="size-[14px]" /> : <Bot className="size-[14px]" />}
               {thread.interactionMode === 'plan' ? 'Plan' : 'Build'}
             </Button>
           </div>
@@ -222,16 +233,16 @@ export function Composer({ thread }: { thread: Thread }): JSX.Element {
           {running ? (
             <Button
               size="icon"
-              className="size-[34px] shrink-0 rounded-[10px] bg-destructive text-destructive-foreground hover:bg-destructive/80"
+              className="size-8 shrink-0 rounded-full bg-destructive text-destructive-foreground shadow-xs transition-all duration-150 hover:scale-105 hover:bg-destructive/80"
               onClick={() => void dispatch({ type: 'turn.interrupt', threadId: thread.id })}
               title="Stop"
             >
-              <Square className="size-3.5" />
+              <Square className="size-3" />
             </Button>
           ) : (
             <Button
               size="icon"
-              className="size-[34px] shrink-0 rounded-[10px] disabled:opacity-35"
+              className="size-8 shrink-0 rounded-full shadow-xs transition-all duration-150 hover:scale-105 disabled:opacity-30"
               onClick={() => void send()}
               disabled={!text.trim() || pending.length > 0}
               title="Send"
