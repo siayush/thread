@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useLayoutEffect, useState } from 'react'
 import { useServer } from '../state/serverStore'
 import { useUi } from '../state/uiStore'
 import { openThreadDiff } from '../state/rightPanelStore'
@@ -25,11 +25,28 @@ export function ChatView({ threadId }: { threadId: string }): JSX.Element {
   const sidebarCollapsed = useUi((s) => s.sidebarCollapsed)
   const paneRef = useAnimationReplay<HTMLDivElement>(useUi((s) => s.settingsOpen))
 
+  // The composer floats over the timeline; its live height becomes the timeline's
+  // bottom inset so the last message can always scroll clear of it.
+  const [composerEl, setComposerEl] = useState<HTMLDivElement | null>(null)
+  const [composerHeight, setComposerHeight] = useState(0)
+  useLayoutEffect(() => {
+    if (!composerEl) return
+    const update = (): void => {
+      const next = Math.ceil(composerEl.getBoundingClientRect().height)
+      if (next > 0) setComposerHeight((cur) => (cur === next ? cur : next))
+    }
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(composerEl)
+    return () => observer.disconnect()
+  }, [composerEl])
+
   if (!detail) {
     return <div className="grid flex-1 place-items-center text-muted-foreground">Loading thread…</div>
   }
 
   const { thread } = detail
+  const isHero = detail.turns.length === 0
 
   // diffs open in the right panel beside the conversation
   const openTurnDiff = (turnId: string): void => {
@@ -59,8 +76,32 @@ export function ChatView({ threadId }: { threadId: string }): JSX.Element {
         </div>
       </header>
 
-      <MessagesTimeline detail={detail} onOpenDiff={openTurnDiff} />
-      <Composer thread={thread} />
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <MessagesTimeline detail={detail} onOpenDiff={openTurnDiff} bottomInset={isHero ? 0 : composerHeight} />
+
+        {/* composer overlay — content scrolls behind it and gets frosted by its blur;
+            on an empty thread it centers as a hero prompt */}
+        <div
+          ref={setComposerEl}
+          className={cn(
+            'pointer-events-none absolute inset-x-0 z-20',
+            isHero ? 'inset-y-0 flex flex-col justify-center' : 'bottom-0'
+          )}
+        >
+          <div className="pointer-events-auto w-full">
+            {isHero && (
+              <h1 className="mb-6 text-center text-2xl font-semibold tracking-tight text-foreground">
+                What should we build in{' '}
+                <span className="underline decoration-muted-foreground/50 decoration-dotted underline-offset-8">
+                  {project?.name ?? thread.title}
+                </span>
+                ?
+              </h1>
+            )}
+            <Composer thread={thread} />
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

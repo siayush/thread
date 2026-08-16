@@ -28,6 +28,9 @@ import { Spinner } from '@/components/ui/spinner'
 interface Props {
   detail: ThreadDetail
   onOpenDiff: (turnId: string) => void
+  /** Live height of the floating composer overlay — reserved below the last
+   *  message so content can always scroll clear of the input. */
+  bottomInset?: number
 }
 
 type Entry =
@@ -307,7 +310,7 @@ function TurnBlock({ group, onOpenDiff }: { group: TurnGroup; onOpenDiff: (turnI
   )
 }
 
-export function MessagesTimeline({ detail, onOpenDiff }: Props): JSX.Element {
+export function MessagesTimeline({ detail, onOpenDiff, bottomInset = 0 }: Props): JSX.Element {
   const groups = useMemo(
     () => groupByTurn(detail),
     // deliberately keyed on the five arrays groupByTurn reads, not `detail` itself —
@@ -316,7 +319,6 @@ export function MessagesTimeline({ detail, onOpenDiff }: Props): JSX.Element {
     [detail.turns, detail.messages, detail.workItems, detail.plans, detail.checkpoints]
   )
   const scrollRef = useRef<HTMLDivElement>(null)
-  const bottomRef = useRef<HTMLDivElement>(null)
   const stick = useRef(true)
 
   const onScroll = (): void => {
@@ -325,20 +327,27 @@ export function MessagesTimeline({ detail, onOpenDiff }: Props): JSX.Element {
     stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120
   }
 
+  // scroll to the true bottom (scrollHeight includes the composer inset padding,
+  // so the last message parks above the floating input, not behind it)
   useLayoutEffect(() => {
-    if (stick.current) bottomRef.current?.scrollIntoView({ block: 'end' })
-  }, [groups])
+    const el = scrollRef.current
+    if (stick.current && el) el.scrollTop = el.scrollHeight
+  }, [groups, bottomInset])
 
   const working = detail.thread.status === 'running'
   const runningTurn = detail.turns.find((t) => t.state === 'running')
 
   if (groups.length === 0) {
-    return <div className="grid flex-1 place-items-center overflow-y-auto text-muted-foreground">Send a message to start the conversation.</div>
+    // empty threads show the hero composer overlay instead (ChatView)
+    return <div className="min-h-0 flex-1" />
   }
 
   return (
-    <div className="flex-1 overflow-y-auto" ref={scrollRef} onScroll={onScroll}>
-      <div className="mx-auto flex max-w-3xl flex-col gap-[18px] px-5 pt-[22px] pb-6">
+    <div className="min-h-0 flex-1 overflow-y-auto" ref={scrollRef} onScroll={onScroll}>
+      <div
+        className="mx-auto flex max-w-3xl flex-col gap-[18px] px-5 pt-[22px]"
+        style={{ paddingBottom: bottomInset + 16 }}
+      >
         {groups.map((g) => (
           <TurnBlock key={g.turnId} group={g} onOpenDiff={onOpenDiff} />
         ))}
@@ -352,7 +361,6 @@ export function MessagesTimeline({ detail, onOpenDiff }: Props): JSX.Element {
             <WorkingTimer startedAt={runningTurn?.startedAt} />
           </div>
         )}
-        <div ref={bottomRef} />
       </div>
     </div>
   )
