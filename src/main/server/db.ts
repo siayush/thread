@@ -120,6 +120,11 @@ export class Db {
     } catch {
       /* column already exists */
     }
+    try {
+      this.db.exec('ALTER TABLE messages ADD COLUMN attachments TEXT;')
+    } catch {
+      /* column already exists */
+    }
   }
 
   /** Prepare-once cache: the hot append path reuses the same few statements. */

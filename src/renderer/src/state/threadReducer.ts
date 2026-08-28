@@ -38,7 +38,17 @@ export function reduceThread(detail: ThreadDetail, e: OrchestrationEvent): Threa
         )
       }
     case 'message.created': {
-      const m: Message = { id: e.payload.messageId, threadId: detail.thread.id, turnId: e.payload.turnId, role: e.payload.role, text: e.payload.text, streaming: e.payload.streaming, createdAt: e.ts, updatedAt: e.ts }
+      const m: Message = {
+        id: e.payload.messageId,
+        threadId: detail.thread.id,
+        turnId: e.payload.turnId,
+        role: e.payload.role,
+        text: e.payload.text,
+        streaming: e.payload.streaming,
+        ...(e.payload.attachments && e.payload.attachments.length > 0 ? { attachments: e.payload.attachments } : {}),
+        createdAt: e.ts,
+        updatedAt: e.ts
+      }
       return { ...patchThread({}), messages: upsert(detail.messages, m) }
     }
     case 'message.delta':

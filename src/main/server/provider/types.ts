@@ -9,7 +9,7 @@
  *
  * @module provider/types
  */
-import type { ApprovalKind } from '@shared/domain'
+import type { ApprovalKind, ChatImageAttachment } from '@shared/domain'
 import type { WorkUpsert } from '@shared/events'
 
 /**
@@ -55,6 +55,8 @@ export interface RunTurnParams {
   turnId: string
   cwd: string
   prompt: string
+  /** images attached to the user message; adapters without image support ignore them */
+  attachments?: ChatImageAttachment[]
   model: string | null
   /** reasoning-effort level to request; null = provider default */
   reasoningEffort: string | null

@@ -149,8 +149,18 @@ export function applyEvent(db: Db, e: OrchestrationEvent): void {
       break
     case 'message.created':
       db.run(
-        'INSERT OR REPLACE INTO messages (id,thread_id,turn_id,role,text,streaming,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)',
-        [e.payload.messageId, e.payload.threadId, e.payload.turnId, e.payload.role, e.payload.text, e.payload.streaming ? 1 : 0, e.ts, e.ts]
+        'INSERT OR REPLACE INTO messages (id,thread_id,turn_id,role,text,streaming,attachments,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)',
+        [
+          e.payload.messageId,
+          e.payload.threadId,
+          e.payload.turnId,
+          e.payload.role,
+          e.payload.text,
+          e.payload.streaming ? 1 : 0,
+          e.payload.attachments && e.payload.attachments.length > 0 ? JSON.stringify(e.payload.attachments) : null,
+          e.ts,
+          e.ts
+        ]
       )
       db.run('UPDATE threads SET latest_activity_at=? WHERE id=?', [e.ts, e.payload.threadId])
       break
@@ -259,6 +269,7 @@ const toMessage = (r: any): Message => ({
   role: r.role,
   text: r.text ?? '',
   streaming: !!r.streaming,
+  ...(r.attachments ? { attachments: JSON.parse(r.attachments) } : {}),
   createdAt: r.created_at,
   updatedAt: r.updated_at
 })

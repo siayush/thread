@@ -1,13 +1,29 @@
-import { useState, type KeyboardEvent } from 'react'
+import { forwardRef, useImperativeHandle, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react'
 import { useServer } from '../state/serverStore'
-import { useComposerDraft } from '../state/uiStore'
-import type { ApprovalDecision, PendingApproval, RuntimeMode, Thread } from '@shared/domain'
-import { TriangleAlert, Lock, SquarePen, LockOpen, Ruler, Bot, Square, ArrowUp, type LucideIcon } from 'lucide-react'
+import { useComposerDraft, type ComposerImageAttachment } from '../state/uiStore'
+import {
+  CHAT_MAX_ATTACHMENTS,
+  CHAT_MAX_IMAGE_BYTES,
+  isSupportedChatImageMimeType,
+  type ApprovalDecision,
+  type OutgoingImageAttachment,
+  type PendingApproval,
+  type RuntimeMode,
+  type Thread
+} from '@shared/domain'
+import { TriangleAlert, Lock, SquarePen, LockOpen, Ruler, Bot, Square, ArrowUp, X, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ModelPicker } from './ModelPicker'
+import { compressImageToByteLimit, readFileAsDataUrl } from '../lib/imageCompression'
+import { buildExpandedImagePreview, type ExpandedImagePreview } from './ExpandedImagePreview'
+
+export interface ComposerHandle {
+  /** files dropped on the chat column funnel into the composer's ingest */
+  addDroppedFiles: (files: File[]) => void
+}
 
 const RUNTIME_LABELS: Record<RuntimeMode, { label: string; icon: LucideIcon }> = {
   supervised: { label: 'Supervised', icon: Lock },
@@ -35,6 +51,8 @@ const EFFORT_LABELS: Record<string, string> = {
   ultrathink: 'Ultrathink'
 }
 const effortLabel = (e: string): string => EFFORT_LABELS[e] ?? e.charAt(0).toUpperCase() + e.slice(1)
+
+const EMPTY_IMAGES: ComposerImageAttachment[] = []
 
 /** Effort dropdown items: `Auto` (the `default` sentinel, sent as null) plus the
  *  model's advertised levels. Empty when the model has none (control is hidden). */
@@ -88,14 +106,22 @@ function ApprovalPanel({ threadId, approval }: { threadId: string; approval: Pen
   )
 }
 
-export function Composer({ thread }: { thread: Thread }): JSX.Element {
+export const Composer = forwardRef<ComposerHandle, { thread: Thread; onExpandImage?: (preview: ExpandedImagePreview) => void }>(
+  function Composer({ thread, onExpandImage }, ref): JSX.Element {
   const dispatch = useServer((s) => s.dispatch)
   const detail = useServer((s) => s.details[thread.id])
   const models = useServer((s) => s.models)
   const drafts = useComposerDraft((s) => s.drafts)
   const setDraft = useComposerDraft((s) => s.set)
+  const images = useComposerDraft((s) => s.images[thread.id] ?? EMPTY_IMAGES)
+  const addImagesToDraft = useComposerDraft((s) => s.addImages)
+  const removeImage = useComposerDraft((s) => s.removeImage)
+  const clearImages = useComposerDraft((s) => s.clearImages)
   const [busy, setBusy] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
+  /** accepted files reserve their attachment slots before the first await, so
+   *  concurrent pastes see each other and the total stays under the limit */
+  const pendingImageCompressionsRef = useRef(0)
 
   const text = drafts[thread.id] ?? ''
   const running = thread.status === 'running'
@@ -106,15 +132,112 @@ export function Composer({ thread }: { thread: Thread }): JSX.Element {
   const reasoningItems = reasoningItemsFor(currentModel?.reasoningEfforts)
   const hasReasoning = Object.keys(reasoningItems).length > 0
 
+  // Single ingest for paste + drop (t3's addComposerImages): synchronous
+  // validation with slot reservation, then downscale-to-fit and object URLs.
+  const addComposerImages = async (files: File[]): Promise<void> => {
+    if (files.length === 0) return
+    let reservedCount =
+      (useComposerDraft.getState().images[thread.id] ?? []).length + pendingImageCompressionsRef.current
+    const acceptedFiles: File[] = []
+    let error: string | null = null
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) {
+        error = `Unsupported file type for '${file.name}'. Please attach image files only.`
+        continue
+      }
+      if (!isSupportedChatImageMimeType(file.type)) {
+        error = `'${file.name}' is not a supported image type. Attach GIF, JPEG, PNG, or WebP images.`
+        continue
+      }
+      if (reservedCount >= CHAT_MAX_ATTACHMENTS) {
+        error = `You can attach up to ${CHAT_MAX_ATTACHMENTS} images per message.`
+        break
+      }
+      acceptedFiles.push(file)
+      reservedCount += 1
+    }
+    setSendError(error)
+    if (acceptedFiles.length === 0) return
+
+    pendingImageCompressionsRef.current += acceptedFiles.length
+    try {
+      const nextImages: ComposerImageAttachment[] = []
+      let compressionError: string | null = null
+      for (const file of acceptedFiles) {
+        // Images over the wire cap are downscaled to fit rather than refused;
+        // files already within it pass through byte-for-byte.
+        const compressed = await compressImageToByteLimit(file, CHAT_MAX_IMAGE_BYTES)
+        if (!compressed.ok) {
+          compressionError =
+            compressed.reason === 'unreadable'
+              ? `'${file.name}' could not be read as an image.`
+              : `'${file.name}' is too large to attach, even after compression.`
+          continue
+        }
+        const attachmentFile = compressed.file
+        nextImages.push({
+          type: 'image',
+          id: crypto.randomUUID(),
+          name: attachmentFile.name || 'image',
+          mimeType: attachmentFile.type,
+          sizeBytes: attachmentFile.size,
+          previewUrl: URL.createObjectURL(attachmentFile),
+          file: attachmentFile
+        })
+      }
+      if (nextImages.length > 0) addImagesToDraft(thread.id, nextImages)
+      if (compressionError !== null) setSendError(compressionError)
+    } finally {
+      pendingImageCompressionsRef.current = Math.max(0, pendingImageCompressionsRef.current - acceptedFiles.length)
+    }
+  }
+
+  useImperativeHandle(ref, () => ({
+    addDroppedFiles: (files: File[]) => {
+      void addComposerImages(files)
+    }
+  }))
+
+  const onComposerPaste = (event: ClipboardEvent<HTMLTextAreaElement>): void => {
+    const files = Array.from(event.clipboardData.files)
+    if (files.length === 0) return
+    const imageFiles = files.filter((file) => file.type.startsWith('image/'))
+    if (imageFiles.length === 0) return
+    event.preventDefault()
+    void addComposerImages(imageFiles)
+  }
+
   const send = async (): Promise<void> => {
     const trimmed = text.trim()
-    if (!trimmed || running || busy) return
+    const imagesSnapshot = useComposerDraft.getState().images[thread.id] ?? []
+    if ((!trimmed && imagesSnapshot.length === 0) || running || busy) return
     setBusy(true)
     setSendError(null)
-    const res = await dispatch({ type: 'turn.send', threadId: thread.id, text: trimmed })
+    let attachments: OutgoingImageAttachment[] | undefined
+    try {
+      attachments =
+        imagesSnapshot.length > 0
+          ? await Promise.all(
+              imagesSnapshot.map(async (image) => ({
+                type: 'image' as const,
+                name: image.name,
+                mimeType: image.mimeType,
+                sizeBytes: image.sizeBytes,
+                dataUrl: await readFileAsDataUrl(image.file)
+              }))
+            )
+          : undefined
+    } catch {
+      setBusy(false)
+      setSendError('Failed to read an attached image')
+      return
+    }
+    const res = await dispatch({ type: 'turn.send', threadId: thread.id, text: trimmed, ...(attachments ? { attachments } : {}) })
     setBusy(false)
-    if (res.ok) setDraft(thread.id, '')
-    else setSendError(res.error ?? 'Failed to send message')
+    if (res.ok) {
+      setDraft(thread.id, '')
+      clearImages(thread.id)
+    } else setSendError(res.error ?? 'Failed to send message')
   }
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>): void => {
@@ -146,6 +269,36 @@ export function Composer({ thread }: { thread: Thread }): JSX.Element {
       <div className="rounded-[22px] border border-white/[0.05] bg-card/80 shadow-[0_12px_28px_-18px_rgba(0,0,0,0.5),inset_0_1px_rgba(255,255,255,0.03)] backdrop-blur-[16px] backdrop-saturate-[1.08]">
         {pending.length > 0 && <ApprovalPanel threadId={thread.id} approval={pending[0]} />}
 
+        {images.length > 0 && (
+          <div className="flex flex-wrap gap-2 px-4 pt-3.5 pb-0.5">
+            {images.map((image) => (
+              <div key={image.id} className="relative h-16 w-16 overflow-hidden rounded-lg border border-border/80 bg-background">
+                <button
+                  type="button"
+                  className="h-full w-full cursor-zoom-in"
+                  aria-label={`Preview ${image.name}`}
+                  onClick={() => {
+                    const preview = buildExpandedImagePreview(images, image.id)
+                    if (!preview) return
+                    onExpandImage?.(preview)
+                  }}
+                >
+                  <img src={image.previewUrl} alt={image.name} className="h-full w-full object-cover" />
+                </button>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  className="absolute top-1 right-1 bg-background/80 hover:bg-background/90"
+                  onClick={() => removeImage(thread.id, image.id)}
+                  aria-label={`Remove ${image.name}`}
+                >
+                  <X />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+
         <Textarea
           className="max-h-[200px] min-h-[70px] resize-none rounded-none border-none bg-transparent px-4 pt-3.5 pb-2 text-[13px] leading-relaxed shadow-none focus-visible:border-transparent focus-visible:ring-0 disabled:bg-transparent md:text-[13px] dark:bg-transparent dark:disabled:bg-transparent"
           placeholder={
@@ -153,11 +306,12 @@ export function Composer({ thread }: { thread: Thread }): JSX.Element {
               ? 'Describe what you want to plan…'
               : isNewThread
                 ? 'Describe what to build'
-                : 'Ask for follow-up changes'
+                : 'Ask for follow-up changes or attach images'
           }
           value={text}
           onChange={(e) => setDraft(thread.id, e.target.value)}
           onKeyDown={onKeyDown}
+          onPaste={onComposerPaste}
           rows={2}
           disabled={pending.length > 0}
         />
@@ -244,7 +398,7 @@ export function Composer({ thread }: { thread: Thread }): JSX.Element {
               size="icon"
               className="size-8 shrink-0 rounded-full shadow-xs transition-all duration-150 hover:scale-105 disabled:opacity-30"
               onClick={() => void send()}
-              disabled={!text.trim() || pending.length > 0}
+              disabled={(!text.trim() && images.length === 0) || pending.length > 0}
               title="Send"
             >
               <ArrowUp className="size-4" />
@@ -254,4 +408,4 @@ export function Composer({ thread }: { thread: Thread }): JSX.Element {
       </div>
     </div>
   )
-}
+})
