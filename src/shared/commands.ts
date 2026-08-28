@@ -2,7 +2,7 @@
  * Commands the renderer dispatches to the server (write side).
  * The engine runs each through the decider → events → projections → broadcast.
  */
-import type { ApprovalDecision, InteractionMode, RuntimeMode } from './domain'
+import type { ApprovalDecision, InteractionMode, OutgoingImageAttachment, RuntimeMode } from './domain'
 
 export type Command =
   | { type: 'project.add'; folderPath: string; name?: string }
@@ -21,7 +21,7 @@ export type Command =
       model?: string | null
       reasoningEffort?: string | null
     }
-  | { type: 'turn.send'; threadId: string; text: string }
+  | { type: 'turn.send'; threadId: string; text: string; attachments?: OutgoingImageAttachment[] }
   | { type: 'turn.interrupt'; threadId: string }
   | { type: 'approval.respond'; threadId: string; requestId: string; decision: ApprovalDecision }
 

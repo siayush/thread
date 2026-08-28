@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import type { Options, PermissionResult, Query, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
-import type { WorkStatus } from '@shared/domain'
+import type { Options, PermissionResult, Query, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
+import type { ChatImageAttachment, WorkStatus } from '@shared/domain'
 import type { WorkUpsert } from '@shared/events'
 import type { AgentHost, ProviderAdapter, ProviderKind, RunTurnParams, TurnOutcome } from './types'
 import { createDeltaBatcher } from './deltaBatcher'
@@ -56,6 +56,38 @@ let sdkPromise: Promise<SdkModule> | null = null
 // The SDK is ESM-only; load it via dynamic import so it survives the CJS main bundle.
 function loadSdk(): Promise<SdkModule> {
   return (sdkPromise ??= import('@anthropic-ai/claude-agent-sdk'))
+}
+
+/** Prompt used when the user sends images with no accompanying text (t3's copy). */
+const IMAGE_ONLY_PROMPT =
+  '[User attached one or more images without additional text. Respond using the conversation context and the attached image(s).]'
+
+/**
+ * Text-only turns pass the prompt string straight through; turns with image
+ * attachments use the SDK's streaming-input mode so the user message can carry
+ * base64 image content blocks alongside the text.
+ */
+function buildPromptInput(prompt: string, attachments?: ChatImageAttachment[]): string | AsyncIterable<SDKUserMessage> {
+  if (!attachments || attachments.length === 0) return prompt
+  const content = [
+    ...attachments.map((a) => ({
+      type: 'image' as const,
+      source: {
+        type: 'base64' as const,
+        media_type: a.mimeType as 'image/gif' | 'image/jpeg' | 'image/png' | 'image/webp',
+        data: a.dataUrl.slice(a.dataUrl.indexOf(',') + 1)
+      }
+    })),
+    { type: 'text' as const, text: prompt.trim() || IMAGE_ONLY_PROMPT }
+  ]
+  return (async function* () {
+    yield {
+      type: 'user',
+      message: { role: 'user', content },
+      parent_tool_use_id: null,
+      session_id: ''
+    } satisfies SDKUserMessage
+  })()
 }
 
 /**
@@ -147,7 +179,7 @@ export class ClaudeAdapter implements ProviderAdapter {
   }
 
   private async attemptTurn(params: RunTurnParams): Promise<{ outcome: TurnOutcome; producedOutput: boolean }> {
-    const { threadId, turnId, cwd, prompt, model, reasoningEffort, permissionMode, resumeSessionId, abort } = params
+    const { threadId, turnId, cwd, prompt, attachments, model, reasoningEffort, permissionMode, resumeSessionId, abort } = params
     if (abort.signal.aborted) return { outcome: { state: 'interrupted', costUsd: null, assistantMessageId: null }, producedOutput: false }
     const { query } = await loadSdk()
     // "ultrathink" is a Claude Code magic keyword — it goes into the prompt, not an option
@@ -224,7 +256,7 @@ export class ClaudeAdapter implements ProviderAdapter {
 
     let q: Query
     try {
-      q = query({ prompt: effectivePrompt, options })
+      q = query({ prompt: buildPromptInput(effectivePrompt, attachments), options })
     } catch (err) {
       return { outcome: { state: 'error', costUsd: null, assistantMessageId: null, error: String(err) }, producedOutput }
     }

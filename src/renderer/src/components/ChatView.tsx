@@ -1,14 +1,17 @@
-import { useEffect, useLayoutEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useServer } from '../state/serverStore'
 import { useUi } from '../state/uiStore'
 import { openThreadDiff } from '../state/rightPanelStore'
 import { MessagesTimeline } from './MessagesTimeline'
-import { Composer } from './Composer'
+import { Composer, type ComposerHandle } from './Composer'
 import { Badge } from '@/components/ui/badge'
-import { Folder } from 'lucide-react'
+import { Folder, Paperclip } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { RightPanelToggle } from './RightPanel'
 import { useAnimationReplay } from '../lib/useAnimationReplay'
+import { makeWorkspaceFileDropHandlers } from '../lib/workspaceFileDrop'
+import { ExpandedImageDialog } from './ExpandedImageDialog'
+import type { ExpandedImagePreview } from './ExpandedImagePreview'
 
 export function ChatView({ threadId }: { threadId: string }): JSX.Element {
   const detail = useServer((s) => s.details[threadId])
@@ -24,6 +27,30 @@ export function ChatView({ threadId }: { threadId: string }): JSX.Element {
   const project = useServer((s) => (detail ? s.shell.projects.find((p) => p.id === detail.thread.projectId) : undefined))
   const sidebarCollapsed = useUi((s) => s.sidebarCollapsed)
   const paneRef = useAnimationReplay<HTMLDivElement>(useUi((s) => s.settingsOpen))
+
+  // Image attachments: files dropped anywhere on the chat column funnel into
+  // the composer; clicked images expand into the lightbox overlay.
+  const composerRef = useRef<ComposerHandle | null>(null)
+  const [isWorkspaceFileDragActive, setIsWorkspaceFileDragActive] = useState(false)
+  const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null)
+  const onExpandImage = useCallback((preview: ExpandedImagePreview) => setExpandedImage(preview), [])
+  const closeExpandedImage = useCallback(() => setExpandedImage(null), [])
+  const addDroppedFiles = useCallback((files: File[]) => {
+    composerRef.current?.addDroppedFiles(files)
+  }, [])
+  const workspaceFileDropHandlers = useMemo(
+    () =>
+      // eslint-disable-next-line react-hooks/refs -- addFiles reads the composer ref only when a drop event fires
+      makeWorkspaceFileDropHandlers({ setDragActive: setIsWorkspaceFileDragActive, addFiles: addDroppedFiles }),
+    [addDroppedFiles]
+  )
+  // a drag cancelled outside the window never fires dragleave — clear on dragend
+  useEffect(() => {
+    if (!isWorkspaceFileDragActive) return
+    const clearWorkspaceFileDrag = (): void => setIsWorkspaceFileDragActive(false)
+    window.addEventListener('dragend', clearWorkspaceFileDrag)
+    return () => window.removeEventListener('dragend', clearWorkspaceFileDrag)
+  }, [isWorkspaceFileDragActive])
 
   // The composer floats over the timeline; its live height becomes the timeline's
   // bottom inset so the last message can always scroll clear of it.
@@ -76,8 +103,30 @@ export function ChatView({ threadId }: { threadId: string }): JSX.Element {
         </div>
       </header>
 
-      <div className="relative flex min-h-0 flex-1 flex-col">
-        <MessagesTimeline detail={detail} onOpenDiff={openTurnDiff} bottomInset={isHero ? 0 : composerHeight} />
+      <div
+        className="relative flex min-h-0 flex-1 flex-col"
+        data-chat-workspace-drop-target="true"
+        onDragEnter={workspaceFileDropHandlers.onDragEnter}
+        onDragOver={workspaceFileDropHandlers.onDragOver}
+        onDragLeave={workspaceFileDropHandlers.onDragLeave}
+        onDrop={workspaceFileDropHandlers.onDrop}
+      >
+        {isWorkspaceFileDragActive && (
+          <div
+            className="pointer-events-none absolute inset-2 z-40 flex items-center justify-center rounded-2xl border-2 border-dashed border-primary/60 bg-primary/[0.035]"
+            data-chat-workspace-drop-overlay="true"
+          >
+            <div
+              role="status"
+              className="flex items-center gap-2 rounded-full border border-primary/25 bg-background/95 px-4 py-2.5 text-sm font-medium text-foreground shadow-lg"
+            >
+              <Paperclip className="size-4 text-primary" aria-hidden="true" />
+              Drop files to attach
+            </div>
+          </div>
+        )}
+
+        <MessagesTimeline detail={detail} onOpenDiff={openTurnDiff} onImageExpand={onExpandImage} bottomInset={isHero ? 0 : composerHeight} />
 
         {/* composer overlay — content scrolls behind it and gets frosted by its blur;
             on an empty thread it centers as a hero prompt */}
@@ -98,10 +147,18 @@ export function ChatView({ threadId }: { threadId: string }): JSX.Element {
                 ?
               </h1>
             )}
-            <Composer thread={thread} />
+            <Composer ref={composerRef} thread={thread} onExpandImage={onExpandImage} />
           </div>
         </div>
       </div>
+
+      {expandedImage && (
+        <ExpandedImageDialog
+          key={`${expandedImage.images[expandedImage.index]?.src ?? 'image'}:${expandedImage.index}`}
+          preview={expandedImage}
+          onClose={closeExpandedImage}
+        />
+      )}
     </div>
   )
 }

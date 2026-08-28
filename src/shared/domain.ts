@@ -50,6 +50,30 @@ export interface Thread {
 
 export type MessageRole = 'user' | 'assistant' | 'system' | 'reasoning'
 
+/** Image-attachment limits (t3's provider send-turn caps). */
+export const CHAT_MAX_ATTACHMENTS = 8
+export const CHAT_MAX_IMAGE_BYTES = 10 * 1024 * 1024
+export const CHAT_MAX_IMAGE_DATA_URL_CHARS = 14_000_000
+export const CHAT_SUPPORTED_IMAGE_MIME_TYPES = ['image/gif', 'image/jpeg', 'image/png', 'image/webp'] as const
+
+export function isSupportedChatImageMimeType(mimeType: string): boolean {
+  return (CHAT_SUPPORTED_IMAGE_MIME_TYPES as readonly string[]).includes(mimeType.toLowerCase())
+}
+
+/** An image attached to a user message. Local-first: the base64 data URL is
+ *  both the stored payload (sent to the provider) and the renderer's preview. */
+export interface ChatImageAttachment {
+  type: 'image'
+  id: string
+  name: string
+  mimeType: string
+  sizeBytes: number
+  dataUrl: string
+}
+
+/** Attachment as uploaded by the composer — the engine assigns the id. */
+export type OutgoingImageAttachment = Omit<ChatImageAttachment, 'id'>
+
 export interface Message {
   id: string
   threadId: string
@@ -57,6 +81,7 @@ export interface Message {
   role: MessageRole
   text: string
   streaming: boolean
+  attachments?: ChatImageAttachment[]
   createdAt: number
   updatedAt: number
 }

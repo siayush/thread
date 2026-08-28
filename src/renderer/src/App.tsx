@@ -85,7 +85,9 @@ export default function App(): JSX.Element {
     <CodeWorkerPool>
       <div className="relative flex h-full overflow-hidden" style={{ '--controls-left': controlsLeft } as React.CSSProperties}>
         <Sidebar />
-        <main className="flex min-w-0 flex-1 flex-col">
+        {/* isolate: chat-internal overlays (composer z-20, minimap z-40) must not
+            escape and paint over the fixed right panel (z-10) */}
+        <main className="isolate flex min-w-0 flex-1 flex-col">
           {activeThreadId ? (
             <ChatView key={activeThreadId} threadId={activeThreadId} />
           ) : (

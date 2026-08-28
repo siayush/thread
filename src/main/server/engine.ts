@@ -5,7 +5,19 @@ import type { Command, CommandResult } from '@shared/commands'
 import type { NewEvent, OrchestrationEvent } from '@shared/events'
 import type { ReadFileResult, StreamMessage } from '@shared/rpc'
 import type { ListDirResult } from '@shared/files'
-import { RUNTIME_MODE_TO_PERMISSION, type ApprovalDecision, type ApprovalKind, type InteractionMode, type RuntimeMode } from '@shared/domain'
+import {
+  CHAT_MAX_ATTACHMENTS,
+  CHAT_MAX_IMAGE_BYTES,
+  CHAT_MAX_IMAGE_DATA_URL_CHARS,
+  RUNTIME_MODE_TO_PERMISSION,
+  isSupportedChatImageMimeType,
+  type ApprovalDecision,
+  type ApprovalKind,
+  type ChatImageAttachment,
+  type InteractionMode,
+  type OutgoingImageAttachment,
+  type RuntimeMode
+} from '@shared/domain'
 import type { DiffAction, DiffResult, DiffScope, DiffSummary } from '@shared/diff'
 import { Db } from './db'
 import { applyEvent, getProject, getShellSnapshot, getThreadDetail, getThreadProjectPath } from './projections'
@@ -254,7 +266,7 @@ export class Engine implements AgentHost {
         ])
         return { ok: true }
       case 'turn.send':
-        return this.startTurn(cmd.threadId, cmd.text)
+        return this.startTurn(cmd.threadId, cmd.text, cmd.attachments)
       case 'turn.interrupt':
         this.activeTurns.get(cmd.threadId)?.abort()
         this.rejectPendingForThread(cmd.threadId)
@@ -272,22 +284,46 @@ export class Engine implements AgentHost {
     this.sessionAllow.delete(threadId)
   }
 
-  private startTurn(threadId: string, text: string): CommandResult {
+  private startTurn(threadId: string, text: string, outgoing?: OutgoingImageAttachment[]): CommandResult {
     const info = getThreadProjectPath(this.db, threadId)
     if (!info) return { ok: false, error: 'Thread not found' }
     if (this.activeTurns.has(threadId)) return { ok: false, error: 'A turn is already running' }
+    if (!text.trim() && (!outgoing || outgoing.length === 0)) return { ok: false, error: 'Nothing to send' }
+
+    // validate attachments against the wire caps before anything is appended
+    if (outgoing && outgoing.length > CHAT_MAX_ATTACHMENTS) {
+      return { ok: false, error: `You can attach up to ${CHAT_MAX_ATTACHMENTS} images per message` }
+    }
+    for (const a of outgoing ?? []) {
+      if (!isSupportedChatImageMimeType(a.mimeType)) return { ok: false, error: `Unsupported image type '${a.mimeType}'` }
+      if (a.sizeBytes > CHAT_MAX_IMAGE_BYTES) return { ok: false, error: `'${a.name}' exceeds the image size limit` }
+      if (!a.dataUrl.startsWith('data:') || a.dataUrl.length > CHAT_MAX_IMAGE_DATA_URL_CHARS) {
+        return { ok: false, error: `'${a.name}' has an invalid or oversized payload` }
+      }
+    }
+    const attachments: ChatImageAttachment[] = (outgoing ?? []).map((a) => ({ ...a, id: randomUUID() }))
+
     const { thread, project } = info
     const turnId = randomUUID()
     const userMsgId = randomUUID()
 
     // first user message on an auto-named thread → derive a title from it
     const priorUserMsgs = this.db.get<{ c: number }>("SELECT COUNT(*) AS c FROM messages WHERE thread_id=? AND role='user'", [threadId])?.c ?? 0
-    if (priorUserMsgs === 0 && isAutoTitle(thread.title) && text.trim()) {
-      void this.autoTitle(threadId, project.folderPath, text.trim(), thread.model)
+    const titleSeed = text.trim() || (attachments.length > 0 ? `Image: ${attachments[0].name}` : '')
+    if (priorUserMsgs === 0 && isAutoTitle(thread.title) && titleSeed) {
+      void this.autoTitle(threadId, project.folderPath, titleSeed, thread.model)
     }
 
     this.append([
-      this.ev('message.created', threadId, { messageId: userMsgId, threadId, turnId, role: 'user', text, streaming: false }),
+      this.ev('message.created', threadId, {
+        messageId: userMsgId,
+        threadId,
+        turnId,
+        role: 'user',
+        text,
+        streaming: false,
+        ...(attachments.length > 0 ? { attachments } : {})
+      }),
       this.ev('turn.started', threadId, { threadId, turnId }),
       this.ev('thread.session', threadId, { threadId, status: 'running', lastError: null })
     ])
@@ -298,7 +334,18 @@ export class Engine implements AgentHost {
     this.activeTurns.set(threadId, abort)
 
     const permissionMode = thread.interactionMode === 'plan' ? 'plan' : RUNTIME_MODE_TO_PERMISSION[thread.runtimeMode]
-    void this.runTurn({ threadId, turnId, cwd: project.folderPath, prompt: text, model: thread.model, reasoningEffort: thread.reasoningEffort, permissionMode, resumeSessionId: thread.sdkSessionId, abort })
+    void this.runTurn({
+      threadId,
+      turnId,
+      cwd: project.folderPath,
+      prompt: text,
+      attachments,
+      model: thread.model,
+      reasoningEffort: thread.reasoningEffort,
+      permissionMode,
+      resumeSessionId: thread.sdkSessionId,
+      abort
+    })
     return { ok: true, data: { turnId } }
   }
 
@@ -317,6 +364,7 @@ export class Engine implements AgentHost {
     turnId: string
     cwd: string
     prompt: string
+    attachments: ChatImageAttachment[]
     model: string | null
     reasoningEffort: string | null
     permissionMode: string

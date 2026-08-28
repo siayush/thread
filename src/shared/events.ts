@@ -4,6 +4,7 @@
  */
 import type {
   ApprovalKind,
+  ChatImageAttachment,
   InteractionMode,
   MessageRole,
   RuntimeMode,
@@ -37,7 +38,7 @@ export type OrchestrationEvent =
   | (Base & { type: 'thread.session'; payload: { threadId: string; status?: SessionStatus; sdkSessionId?: string | null; lastError?: string | null } })
   | (Base & { type: 'turn.started'; payload: { threadId: string; turnId: string } })
   | (Base & { type: 'turn.completed'; payload: { threadId: string; turnId: string; state: TurnState; assistantMessageId: string | null; costUsd: number | null } })
-  | (Base & { type: 'message.created'; payload: { messageId: string; threadId: string; turnId: string | null; role: MessageRole; text: string; streaming: boolean } })
+  | (Base & { type: 'message.created'; payload: { messageId: string; threadId: string; turnId: string | null; role: MessageRole; text: string; streaming: boolean; attachments?: ChatImageAttachment[] } })
   | (Base & { type: 'message.delta'; payload: { messageId: string; threadId: string; delta: string } })
   | (Base & { type: 'message.completed'; payload: { messageId: string; threadId: string; text: string } })
   | (Base & { type: 'work.upserted'; payload: WorkUpsert })

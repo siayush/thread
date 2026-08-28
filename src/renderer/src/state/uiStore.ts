@@ -121,11 +121,75 @@ export function isProjectExpanded(map: Record<string, boolean>, projectId: strin
   return map[projectId] ?? true
 }
 
+/** A pending composer image: blob preview URL for the UI + the File for the send. */
+export interface ComposerImageAttachment {
+  type: 'image'
+  id: string
+  name: string
+  mimeType: string
+  sizeBytes: number
+  previewUrl: string
+  file: File
+}
+
+function revokeObjectPreviewUrl(url: string): void {
+  if (!url.startsWith('blob:')) return
+  try {
+    URL.revokeObjectURL(url)
+  } catch {
+    /* already revoked */
+  }
+}
+
+/** Dedupe key — deliberately not `lastModified`, matching t3. */
+const composerImageDedupeKey = (image: Pick<ComposerImageAttachment, 'mimeType' | 'sizeBytes' | 'name'>): string =>
+  `${image.mimeType}\u0000${image.sizeBytes}\u0000${image.name}`
+
 /** per-thread composer drafts (not persisted across restarts) */
 export const useComposerDraft = create<{
   drafts: Record<string, string>
+  images: Record<string, ComposerImageAttachment[]>
   set: (threadId: string, text: string) => void
+  /** append images, dropping duplicates (their blob URLs get revoked) */
+  addImages: (threadId: string, images: ComposerImageAttachment[]) => void
+  removeImage: (threadId: string, imageId: string) => void
+  /** clear a thread's pending images, revoking their blob URLs */
+  clearImages: (threadId: string) => void
 }>((set) => ({
   drafts: {},
-  set: (threadId, text) => set((s) => ({ drafts: { ...s.drafts, [threadId]: text } }))
+  images: {},
+  set: (threadId, text) => set((s) => ({ drafts: { ...s.drafts, [threadId]: text } })),
+  addImages: (threadId, incoming) =>
+    set((s) => {
+      const current = s.images[threadId] ?? []
+      const seen = new Set(current.map(composerImageDedupeKey))
+      const accepted: ComposerImageAttachment[] = []
+      for (const image of incoming) {
+        const key = composerImageDedupeKey(image)
+        if (seen.has(key)) {
+          revokeObjectPreviewUrl(image.previewUrl)
+          continue
+        }
+        seen.add(key)
+        accepted.push(image)
+      }
+      if (accepted.length === 0) return s
+      return { images: { ...s.images, [threadId]: [...current, ...accepted] } }
+    }),
+  removeImage: (threadId, imageId) =>
+    set((s) => {
+      const current = s.images[threadId] ?? []
+      const removed = current.find((image) => image.id === imageId)
+      if (!removed) return s
+      revokeObjectPreviewUrl(removed.previewUrl)
+      return { images: { ...s.images, [threadId]: current.filter((image) => image.id !== imageId) } }
+    }),
+  clearImages: (threadId) =>
+    set((s) => {
+      const current = s.images[threadId] ?? []
+      if (current.length === 0) return s
+      for (const image of current) revokeObjectPreviewUrl(image.previewUrl)
+      const { [threadId]: _dropped, ...rest } = s.images
+      return { images: rest }
+    })
 }))
